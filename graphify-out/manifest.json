@@ -1,0 +1,128 @@
+{
+  "app/build.gradle.kts": {
+    "mtime": 1788501023.0,
+    "seen": 1788744864.787953,
+    "ast_hash": "60f50e30cfe0f1cdfc9b74a40559fd39",
+    "semantic_hash": "60f50e30cfe0f1cdfc9b74a40559fd39"
+  },
+  "app/src/main/java/com/fintrack/app/MainActivity.kt": {
+    "mtime": 1788501407.0,
+    "seen": 1788744864.7879539,
+    "ast_hash": "fae7fefe2f3f4f5e9b1b04e18d1fb2b5",
+    "semantic_hash": "fae7fefe2f3f4f5e9b1b04e18d1fb2b5"
+  },
+  "app/src/main/java/com/fintrack/app/data/FakeData.kt": {
+    "mtime": 1788738067.0252295,
+    "seen": 1788744864.787955,
+    "ast_hash": "d7d4feb16fe016cee9974be29cad99af",
+    "semantic_hash": "d7d4feb16fe016cee9974be29cad99af"
+  },
+  "app/src/main/java/com/fintrack/app/data/model/Models.kt": {
+    "mtime": 1788501270.0,
+    "seen": 1788744864.787956,
+    "ast_hash": "d9dd278910dc43538ffcf2c6d19d24d6",
+    "semantic_hash": "d9dd278910dc43538ffcf2c6d19d24d6"
+  },
+  "app/src/main/java/com/fintrack/app/navigation/FinTrackDestination.kt": {
+    "mtime": 1788501112.0,
+    "seen": 1788744864.787956,
+    "ast_hash": "0c6ac0cfeb9dde5fa8be8221fa4ea1b5",
+    "semantic_hash": "0c6ac0cfeb9dde5fa8be8221fa4ea1b5"
+  },
+  "app/src/main/java/com/fintrack/app/navigation/FinTrackNavGraph.kt": {
+    "mtime": 1788650943.6981075,
+    "seen": 1788744864.787957,
+    "ast_hash": "fe51c2a228202c48e148cf601523ad36",
+    "semantic_hash": "fe51c2a228202c48e148cf601523ad36"
+  },
+  "app/src/main/java/com/fintrack/app/ui/components/CommonComponents.kt": {
+    "mtime": 1788530410.0,
+    "seen": 1788744864.787957,
+    "ast_hash": "784dc7b4c9d1fd7801a796706ee50e5b",
+    "semantic_hash": "784dc7b4c9d1fd7801a796706ee50e5b"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/AccountsScreen.kt": {
+    "mtime": 1788501375.0,
+    "seen": 1788744864.787958,
+    "ast_hash": "b82a01502d99dd923343d955befb9da4",
+    "semantic_hash": "b82a01502d99dd923343d955befb9da4"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/BudgetScreen.kt": {
+    "mtime": 1788501387.0,
+    "seen": 1788744864.787958,
+    "ast_hash": "e556a03d605ec6fa88a04e856623f7cf",
+    "semantic_hash": "e556a03d605ec6fa88a04e856623f7cf"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/CategoriesScreen.kt": {
+    "mtime": 1788501581.0,
+    "seen": 1788744864.787959,
+    "ast_hash": "7b525d29de031d426c9d75c1f4f748bc",
+    "semantic_hash": "7b525d29de031d426c9d75c1f4f748bc"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/HomeScreen.kt": {
+    "mtime": 1788501586.0,
+    "seen": 1788744864.78796,
+    "ast_hash": "244b1dde43d7e1e4b1e71cd42fb3bb92",
+    "semantic_hash": "244b1dde43d7e1e4b1e71cd42fb3bb92"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/PredictionScreen.kt": {
+    "mtime": 1788501391.0,
+    "seen": 1788744864.78796,
+    "ast_hash": "ac8095ef399c58f90edac751cc4ab03b",
+    "semantic_hash": "ac8095ef399c58f90edac751cc4ab03b"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/ProfileScreen.kt": {
+    "mtime": 1788501509.0,
+    "seen": 1788744864.787961,
+    "ast_hash": "c17f81aa36ede400bd53c83d94f8221e",
+    "semantic_hash": "c17f81aa36ede400bd53c83d94f8221e"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/SubcategoriesScreen.kt": {
+    "mtime": 1788501320.0,
+    "seen": 1788744864.787961,
+    "ast_hash": "a7c68d527ec99b92d9c37db8cb569cb3",
+    "semantic_hash": "a7c68d527ec99b92d9c37db8cb569cb3"
+  },
+  "app/src/main/java/com/fintrack/app/ui/screens/TransactionsScreen.kt": {
+    "mtime": 1788501383.0,
+    "seen": 1788744864.7879622,
+    "ast_hash": "ea5b8407010eac51497d7881c5d14c1a",
+    "semantic_hash": "ea5b8407010eac51497d7881c5d14c1a"
+  },
+  "app/src/main/java/com/fintrack/app/ui/theme/Color.kt": {
+    "mtime": 1788501056.0,
+    "seen": 1788744864.7879622,
+    "ast_hash": "f1c9ddd6088965dddb9f5e4602cd2da9",
+    "semantic_hash": "f1c9ddd6088965dddb9f5e4602cd2da9"
+  },
+  "app/src/main/java/com/fintrack/app/ui/theme/Theme.kt": {
+    "mtime": 1788501445.0,
+    "seen": 1788744864.787963,
+    "ast_hash": "5d341319ccb148576fc69411afd1be82",
+    "semantic_hash": "5d341319ccb148576fc69411afd1be82"
+  },
+  "app/src/main/java/com/fintrack/app/ui/theme/Type.kt": {
+    "mtime": 1788501062.0,
+    "seen": 1788744864.787963,
+    "ast_hash": "4b0e2c99751bc1692de6e03c9d542c48",
+    "semantic_hash": "4b0e2c99751bc1692de6e03c9d542c48"
+  },
+  "build.gradle.kts": {
+    "mtime": 1788500347.0,
+    "seen": 1788744864.7879639,
+    "ast_hash": "2606ace5931fd8301ff6a1242b79222d",
+    "semantic_hash": "2606ace5931fd8301ff6a1242b79222d"
+  },
+  "settings.gradle.kts": {
+    "mtime": 1788500344.0,
+    "seen": 1788744864.7879639,
+    "ast_hash": "805b16e0f6221b169de4bc07e08c4ddf",
+    "semantic_hash": "805b16e0f6221b169de4bc07e08c4ddf"
+  },
+  "README.md": {
+    "mtime": 1788501615.0,
+    "seen": 1788744864.7879648,
+    "ast_hash": "1294e2f432949161c30b756ad2b44d64",
+    "semantic_hash": "1294e2f432949161c30b756ad2b44d64"
+  }
+}

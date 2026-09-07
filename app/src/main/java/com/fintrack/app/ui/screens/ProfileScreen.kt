@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.FakeData
+import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.NavigationRowItem
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackGreen
@@ -35,6 +36,7 @@ import com.fintrack.app.ui.theme.FinTrackRed
 
 @Composable
 fun ProfileScreen(
+    onBack: () -> Unit,
     onNavigateToCategories: () -> Unit,
     onLogout: () -> Unit = {}
 ) {
@@ -46,14 +48,7 @@ fun ProfileScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        item {
-            Text(
-                text = "Mi Perfil",
-                style = MaterialTheme.typography.headlineSmall,
-                color = FinTrackNavy,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
-            )
-        }
+        item { FinTrackDetailTopBar(title = "Mi Perfil", onBackClick = onBack) }
 
         item {
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {

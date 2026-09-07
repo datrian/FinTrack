@@ -42,12 +42,14 @@ fun FinTrackApp() {
                 bottom = innerPadding.calculateBottomPadding()
             )
         ) {
-            val openProfile: () -> Unit = { navController.navigate(FinTrackDestination.Profile.route) }
+            val openProfile: () -> Unit = {
+                navController.navigate(FinTrackDestination.Profile.route) { launchSingleTop = true }
+            }
 
             composableRoute(FinTrackDestination.Home.route) {
                 HomeScreen(
-                    onNavigateToAccounts = { navController.navigate(FinTrackDestination.Accounts.route) },
-                    onAddTransaction = { navController.navigate(FinTrackDestination.Transactions.route) },
+                    onNavigateToAccounts = { navController.navigateSingleTop(FinTrackDestination.Accounts.route) },
+                    onAddTransaction = { navController.navigateSingleTop(FinTrackDestination.Transactions.route) },
                     onOpenProfile = openProfile
                 )
             }
@@ -60,7 +62,9 @@ fun FinTrackApp() {
                 CategoriesScreen(
                     onBack = { navController.popBackStack() },
                     onCategoryClick = { categoryId ->
-                        navController.navigate(FinTrackDestination.Subcategories.createRoute(categoryId))
+                        navController.navigate(FinTrackDestination.Subcategories.createRoute(categoryId)) {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -73,7 +77,10 @@ fun FinTrackApp() {
             }
             composableRoute(FinTrackDestination.Profile.route) {
                 ProfileScreen(
-                    onNavigateToCategories = { navController.navigate(FinTrackDestination.Categories.route) }
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCategories = {
+                        navController.navigate(FinTrackDestination.Categories.route) { launchSingleTop = true }
+                    }
                 )
             }
         }
@@ -85,6 +92,20 @@ private fun androidx.navigation.NavGraphBuilder.composableRoute(
     content: @Composable () -> Unit
 ) {
     composable(route) { content() }
+}
+
+/**
+ * Navigates to [route] the same safe way for every top-level (bottom-bar) destination,
+ * whether the trigger is the bottom bar itself or a shortcut like Home's Quick Access
+ * cards: launchSingleTop avoids stacking duplicate destinations on repeated/rapid taps,
+ * and popUpTo + restoreState keep back-stack state consistent with the bottom bar.
+ */
+private fun NavHostController.navigateSingleTop(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
 @Composable
@@ -103,13 +124,7 @@ private fun FinTrackBottomBar(navController: NavHostController) {
                 val selected = currentRoute?.hierarchy?.any { it.route == item.route } == true
                 NavigationBarItem(
                     selected = selected,
-                    onClick = {
-                        navController.navigate(item.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    onClick = { navController.navigateSingleTop(item.route) },
                     icon = { androidx.compose.material3.Icon(imageVector = item.icon, contentDescription = item.label) },
                     label = { Text(text = item.label) },
                     colors = NavigationBarItemDefaultsColors()
