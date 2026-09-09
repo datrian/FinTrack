@@ -20,39 +20,39 @@
 15-->[androidx.core:core:1.13.1] /Users/carlos/.gradle/caches/transforms-4/8e0a0bff2d388b6446750efdf4a5758f/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
 16
 17    <application
-17-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:4:5-20:19
+17-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:4:5-20:19
 18        android:allowBackup="true"
-18-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:5:9-35
+18-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:5:9-35
 19        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 19-->[androidx.core:core:1.13.1] /Users/carlos/.gradle/caches/transforms-4/8e0a0bff2d388b6446750efdf4a5758f/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
 20        android:debuggable="true"
 21        android:extractNativeLibs="false"
 22        android:icon="@mipmap/ic_launcher"
-22-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:6:9-43
+22-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:6:9-43
 23        android:label="@string/app_name"
-23-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:7:9-41
+23-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:7:9-41
 24        android:supportsRtl="true"
-24-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:8:9-35
+24-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:8:9-35
 25        android:testOnly="true"
 26        android:theme="@style/Theme.FinTrack" >
-26-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:9:9-46
+26-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:9:9-46
 27        <activity
-27-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:11:9-19:20
+27-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:11:9-19:20
 28            android:name="com.fintrack.app.MainActivity"
-28-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:12:13-41
+28-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:12:13-41
 29            android:exported="true"
-29-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:13:13-36
+29-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:13:13-36
 30            android:theme="@style/Theme.FinTrack" >
-30-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:14:13-50
+30-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:14:13-50
 31            <intent-filter>
-31-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:15:13-18:29
+31-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:15:13-18:29
 32                <action android:name="android.intent.action.MAIN" />
-32-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:16:17-69
-32-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:16:25-66
+32-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:16:17-69
+32-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:16:25-66
 33
 34                <category android:name="android.intent.category.LAUNCHER" />
-34-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:17:17-77
-34-->/Users/carlos/Code/FinTrackApp 2/app/src/main/AndroidManifest.xml:17:27-74
+34-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:17:17-77
+34-->/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/AndroidManifest.xml:17:27-74
 35            </intent-filter>
 36        </activity>
 37        <activity

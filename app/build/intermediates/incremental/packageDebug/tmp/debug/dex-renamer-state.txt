@@ -1,13 +1,13 @@
-#Mon Sep 07 00:04:28 CST 2026
-base.0=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
-base.1=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
-base.2=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/10/classes.dex
-base.3=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/11/classes.dex
-base.4=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/13/classes.dex
-base.5=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/5/classes.dex
-base.6=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/6/classes.dex
-base.7=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/9/classes.dex
-base.8=/Users/carlos/Code/FinTrackApp 2/app/build/intermediates/dex/debug/mergeExtDexDebug/classes2.dex
+#Mon Sep 07 22:25:37 CST 2026
+base.0=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
+base.1=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+base.2=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/10/classes.dex
+base.3=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/11/classes.dex
+base.4=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/13/classes.dex
+base.5=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/5/classes.dex
+base.6=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/6/classes.dex
+base.7=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeProjectDexDebug/9/classes.dex
+base.8=/Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/dex/debug/mergeExtDexDebug/classes2.dex
 path.0=classes.dex
 path.1=0/classes.dex
 path.2=10/classes.dex

@@ -45,10 +45,10 @@ com.fintrack.app-ui-text-release-43 /Users/carlos/.gradle/caches/transforms-4/ec
 com.fintrack.app-core-ktx-1.13.1-44 /Users/carlos/.gradle/caches/transforms-4/ee0481a11330c26fe06a00831ef0481b/transformed/core-ktx-1.13.1/res
 com.fintrack.app-ui-geometry-release-45 /Users/carlos/.gradle/caches/transforms-4/f513593dc0516cc407bc481c6c67ad12/transformed/ui-geometry-release/res
 com.fintrack.app-animation-release-46 /Users/carlos/.gradle/caches/transforms-4/f9ccb624363d44550effdf918ef6fc77/transformed/animation-release/res
-com.fintrack.app-pngs-47 /Users/carlos/Code/FinTrackApp 2/app/build/generated/res/pngs/debug
-com.fintrack.app-resValues-48 /Users/carlos/Code/FinTrackApp 2/app/build/generated/res/resValues/debug
-com.fintrack.app-packageDebugResources-49 /Users/carlos/Code/FinTrackApp 2/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
-com.fintrack.app-packageDebugResources-50 /Users/carlos/Code/FinTrackApp 2/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
-com.fintrack.app-debug-51 /Users/carlos/Code/FinTrackApp 2/app/build/intermediates/merged_res/debug/mergeDebugResources
-com.fintrack.app-debug-52 /Users/carlos/Code/FinTrackApp 2/app/src/debug/res
-com.fintrack.app-main-53 /Users/carlos/Code/FinTrackApp 2/app/src/main/res
+com.fintrack.app-pngs-47 /Users/carlos/Code/Modular/FinTrackApp 2/app/build/generated/res/pngs/debug
+com.fintrack.app-resValues-48 /Users/carlos/Code/Modular/FinTrackApp 2/app/build/generated/res/resValues/debug
+com.fintrack.app-packageDebugResources-49 /Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.fintrack.app-packageDebugResources-50 /Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.fintrack.app-debug-51 /Users/carlos/Code/Modular/FinTrackApp 2/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.fintrack.app-debug-52 /Users/carlos/Code/Modular/FinTrackApp 2/app/src/debug/res
+com.fintrack.app-main-53 /Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/res

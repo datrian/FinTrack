@@ -1553,6 +1553,23 @@
             "outputFile": "com.fintrack.app-debug-51:/values_values.arsc.flat",
             "map": [
                 {
+                    "source": "/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "45",
+                        "endOffsets": "57"
+                    },
+                    "to": {
+                        "startLines": "100",
+                        "startColumns": "4",
+                        "startOffsets": "6073",
+                        "endColumns": "45",
+                        "endOffsets": "6114"
+                    }
+                },
+                {
                     "source": "/Users/carlos/.gradle/caches/transforms-4/9c09bba0afbdcfa3f9923e85ee633245/transformed/ui-release/res/values/values.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,60,63",
@@ -1569,23 +1586,6 @@
                         "endLines": "34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,97,108,109,110,111,112,113,114,175,176,177,178,179,180,181,183,184,185,190,193,197",
                         "endColumns": "58,58,59,59,59,59,59,59,59,59,59,59,58,59,59,59,59,59,59,59,59,59,59,58,59,59,58,58,58,58,58,58,73,57,54,50,54,52,64,53,65,100,57,51,59,61,53,35,33,49,53,45,46,35,89,12,12,12",
                         "endOffsets": "2366,2425,2485,2545,2605,2665,2725,2785,2845,2905,2965,3025,3084,3144,3204,3264,3324,3384,3444,3504,3564,3624,3684,3743,3803,3863,3922,3981,4040,4099,4158,4217,4291,4349,4404,4455,4510,5915,6690,6744,6810,6911,6969,7021,7081,11510,11564,11600,11634,11684,11738,11784,11902,11938,12028,12251,12362,12557"
-                    }
-                },
-                {
-                    "source": "/Users/carlos/Code/FinTrackApp 2/app/src/main/res/values/strings.xml",
-                    "from": {
-                        "startLines": "1",
-                        "startColumns": "4",
-                        "startOffsets": "16",
-                        "endColumns": "45",
-                        "endOffsets": "57"
-                    },
-                    "to": {
-                        "startLines": "100",
-                        "startColumns": "4",
-                        "startOffsets": "6073",
-                        "endColumns": "45",
-                        "endOffsets": "6114"
                     }
                 },
                 {
@@ -1697,23 +1697,6 @@
                     }
                 },
                 {
-                    "source": "/Users/carlos/Code/FinTrackApp 2/app/src/main/res/values/themes.xml",
-                    "from": {
-                        "startLines": "1",
-                        "startColumns": "4",
-                        "startOffsets": "16",
-                        "endColumns": "85",
-                        "endOffsets": "97"
-                    },
-                    "to": {
-                        "startLines": "209",
-                        "startColumns": "4",
-                        "startOffsets": "13320",
-                        "endColumns": "84",
-                        "endOffsets": "13400"
-                    }
-                },
-                {
                     "source": "/Users/carlos/.gradle/caches/transforms-4/6882bccadd010629ff0a1ec3880068e4/transformed/foundation-release/res/values/values.xml",
                     "from": {
                         "startLines": "2,3",
@@ -1764,6 +1747,23 @@
                         "startOffsets": "4515,4692",
                         "endColumns": "53,66",
                         "endOffsets": "4564,4754"
+                    }
+                },
+                {
+                    "source": "/Users/carlos/Code/Modular/FinTrackApp 2/app/src/main/res/values/themes.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "85",
+                        "endOffsets": "97"
+                    },
+                    "to": {
+                        "startLines": "209",
+                        "startColumns": "4",
+                        "startOffsets": "13320",
+                        "endColumns": "84",
+                        "endOffsets": "13400"
                     }
                 },
                 {
