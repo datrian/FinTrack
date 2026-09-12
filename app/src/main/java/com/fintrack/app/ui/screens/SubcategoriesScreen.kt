@@ -39,9 +39,15 @@ import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
 
+// Pantalla de Subcategorías: muestra las subcategorías de UNA categoría
+// (identificada por categoryId, que llega como parámetro de la ruta de
+// navegación). Permite agregar y borrar subcategorías.
 @Composable
 fun SubcategoriesScreen(categoryId: String, onBack: () -> Unit) {
+    // Busca la categoría por id; si no la encuentra (no debería pasar), usa la primera como respaldo.
     val category = FakeData.categories.firstOrNull { it.id == categoryId } ?: FakeData.categories.first()
+    // "remember(categoryId)" reinicia este estado si categoryId cambia (o sea,
+    // si se navega a otra categoría, la lista se vuelve a cargar desde cero).
     val subcategories = remember(categoryId) {
         mutableStateOf(FakeData.subcategoriesByCategory[categoryId] ?: emptyList())
     }
@@ -54,6 +60,7 @@ fun SubcategoriesScreen(categoryId: String, onBack: () -> Unit) {
     ) {
         item { FinTrackDetailTopBar(title = "Subcategorías", onBackClick = onBack) }
 
+        // Tarjeta azul con el ícono y nombre de la categoría seleccionada, a modo de encabezado.
         item {
             Surface(
                 modifier = Modifier
@@ -99,6 +106,7 @@ fun SubcategoriesScreen(categoryId: String, onBack: () -> Unit) {
             )
         }
 
+        // Una fila por subcategoría, con botón de borrar (quita el elemento de la lista por id).
         items(subcategories.value, key = { it.id }) { subcategory ->
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                 SubcategoryRow(
@@ -110,6 +118,7 @@ fun SubcategoriesScreen(categoryId: String, onBack: () -> Unit) {
             }
         }
 
+        // Campo de texto + botón "+" para agregar una subcategoría nueva (sin límite por defecto).
         item {
             Row(
                 modifier = Modifier
@@ -148,6 +157,8 @@ fun SubcategoriesScreen(categoryId: String, onBack: () -> Unit) {
     }
 }
 
+// Tarjeta de una subcategoría: nombre + su límite (o "Sin límite"), con
+// botón de basurero para eliminarla.
 @Composable
 private fun SubcategoryRow(subcategory: Subcategory, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     SectionCard(modifier = modifier) {

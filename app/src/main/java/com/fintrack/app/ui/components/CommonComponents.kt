@@ -39,8 +39,13 @@ import com.fintrack.app.ui.theme.ProgressTrack
 import java.text.NumberFormat
 import java.util.Locale
 
+// Piezas de UI reutilizadas por varias pantallas (barras superiores, tarjetas,
+// barras de progreso, etc), para no repetir el mismo código en cada archivo
+// de pantalla.
+
 private val currencyFormat: NumberFormat = NumberFormat.getCurrencyInstance(Locale.US)
 
+// Formatea un número como moneda (ej. 1234.5 -> "$1,234.50").
 fun formatCurrency(amount: Double): String = currencyFormat.format(amount)
 
 /** Top app bar used on every top-level screen: hamburger menu, screen title and logo. */
@@ -109,6 +114,7 @@ fun FinTrackDetailTopBar(
     }
 }
 
+// Logo circular ("$") que aparece en la esquina de las barras superiores.
 @Composable
 fun FinTrackLogo(modifier: Modifier = Modifier) {
     Box(
@@ -127,6 +133,9 @@ fun FinTrackLogo(modifier: Modifier = Modifier) {
     }
 }
 
+// Tarjeta blanca con bordes redondeados y padding interno: es el "bloque"
+// visual base que se usa para casi todo el contenido de las pantallas
+// (tarjeta de cuenta, tarjeta de presupuesto, etc).
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
@@ -145,6 +154,8 @@ fun SectionCard(
 // Alias to avoid importing ColumnScope explicitly at every call site.
 typealias ColumnScopeAlias = androidx.compose.foundation.layout.ColumnScope
 
+// Barra de progreso con una etiqueta a la izquierda (ej. "Alimentos") y un
+// valor a la derecha (ej. "82%"), usada en presupuestos.
 @Composable
 fun LabeledProgressBar(
     label: String,
@@ -174,6 +185,8 @@ fun LabeledProgressBar(
     }
 }
 
+// Tarjeta cuadrada de acceso rápido (ícono + texto) que se usa en la grilla
+// de "accesos rápidos" de la pantalla de Inicio.
 @Composable
 fun RowScope.QuickAccessCard(
     label: String,
@@ -216,6 +229,9 @@ fun RowScope.QuickAccessCard(
     }
 }
 
+// Fila de lista genérica: título + subtítulo opcional a la izquierda, texto
+// final opcional y flechita ">" a la derecha (si tiene onClick). Se usa para
+// filas de listas navegables, como en Perfil o Categorías.
 @Composable
 fun NavigationRowItem(
     title: String,
@@ -258,4 +274,5 @@ fun NavigationRowItem(
     }
 }
 
+// Color estándar para montos: verde si es positivo (ingreso), rojo si es negativo (gasto).
 fun amountColor(isPositive: Boolean): Color = if (isPositive) FinTrackGreen else FinTrackRed

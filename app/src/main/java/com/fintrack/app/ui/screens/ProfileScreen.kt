@@ -34,6 +34,8 @@ import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
 
+// Pantalla de Perfil: datos del usuario, preferencias generales (moneda,
+// notificaciones, accesos a Categorías/Subcategorías) y cerrar sesión.
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
@@ -41,6 +43,7 @@ fun ProfileScreen(
     onLogout: () -> Unit = {}
 ) {
     val profile = FakeData.userProfile
+    // Estado local del switch de notificaciones, inicializado con el valor guardado en el perfil.
     var notificationsEnabled by remember { mutableStateOf(profile.budgetNotificationsEnabled) }
 
     LazyColumn(
@@ -52,6 +55,7 @@ fun ProfileScreen(
 
         item {
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                // Tarjeta con avatar (iniciales), nombre y correo del usuario.
                 SectionCard {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -86,6 +90,7 @@ fun ProfileScreen(
                     modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
                 )
 
+                // Tarjeta con las opciones de preferencias, separadas por divisores.
                 SectionCard {
                     NavigationRowItem(title = "Moneda principal", trailingText = profile.currency, onClick = {})
                     androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -109,6 +114,7 @@ fun ProfileScreen(
                     NavigationRowItem(title = "Administrar Subcategorías", onClick = onNavigateToCategories)
                 }
 
+                // Botón "Cerrar sesión" con borde rojo, al final de la pantalla.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -27,8 +27,13 @@ import com.fintrack.app.ui.screens.SubcategoriesScreen
 import com.fintrack.app.ui.screens.TransactionsScreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 
+// Composable raíz de la app: arma el "Scaffold" (barra inferior + área de
+// contenido) y define, mediante NavHost, qué pantalla se muestra para cada
+// ruta declarada en FinTrackDestination.
 @Composable
 fun FinTrackApp() {
+    // Controlador que guarda el historial de navegación (a qué pantalla ir,
+    // cómo volver atrás, etc). "remember" hace que sobreviva a recomposiciones.
     val navController = rememberNavController()
 
     Scaffold(
@@ -36,16 +41,18 @@ fun FinTrackApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = FinTrackDestination.Home.route,
+            startDestination = FinTrackDestination.Home.route, // primera pantalla al abrir la app
             modifier = Modifier.padding(
                 top = innerPadding.calculateTopPadding(),
                 bottom = innerPadding.calculateBottomPadding()
             )
         ) {
+            // Atajo compartido por varias pantallas para navegar a "Mi Perfil".
             val openProfile: () -> Unit = {
                 navController.navigate(FinTrackDestination.Profile.route) { launchSingleTop = true }
             }
 
+            // Cada composableRoute registra una ruta y qué pantalla dibujar para ella.
             composableRoute(FinTrackDestination.Home.route) {
                 HomeScreen(
                     onNavigateToAccounts = { navController.navigateSingleTop(FinTrackDestination.Accounts.route) },
@@ -53,11 +60,14 @@ fun FinTrackApp() {
                     onOpenProfile = openProfile
                 )
             }
+            // Las 5 pantallas principales (una por cada ítem de la barra inferior).
             composableRoute(FinTrackDestination.Accounts.route) { AccountsScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Transactions.route) { TransactionsScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Budget.route) { BudgetScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Prediction.route) { PredictionScreen(onOpenProfile = openProfile) }
 
+            // Pantalla de categorías: al tocar una categoría navega a sus subcategorías,
+            // pasándole el id de la categoría como parámetro de la ruta.
             composableRoute(FinTrackDestination.Categories.route) {
                 CategoriesScreen(
                     onBack = { navController.popBackStack() },
@@ -68,6 +78,9 @@ fun FinTrackApp() {
                     }
                 )
             }
+            // Ruta con parámetro: se declara con "composable" (no con el helper
+            // composableRoute) porque necesita describir el argumento "categoryId"
+            // y leerlo de vuelta desde el backStackEntry.
             composable(
                 route = FinTrackDestination.Subcategories.route,
                 arguments = listOf(navArgument("categoryId") { type = NavType.StringType })
@@ -87,6 +100,8 @@ fun FinTrackApp() {
     }
 }
 
+// Pequeño helper para no repetir "composable(route) { content() }" en cada
+// pantalla que no necesita argumentos de ruta.
 private fun androidx.navigation.NavGraphBuilder.composableRoute(
     route: String,
     content: @Composable () -> Unit
@@ -108,8 +123,11 @@ private fun NavHostController.navigateSingleTop(route: String) {
     }
 }
 
+// Barra de navegación inferior con los 5 accesos principales.
 @Composable
 private fun FinTrackBottomBar(navController: NavHostController) {
+    // Se "escucha" la ruta actual como state: cada vez que cambia de pantalla,
+    // este composable se recompone y actualiza qué ítem aparece seleccionado.
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
 
@@ -134,6 +152,7 @@ private fun FinTrackBottomBar(navController: NavHostController) {
     }
 }
 
+// Colores del ítem seleccionado/no seleccionado de la barra inferior.
 @Composable
 private fun NavigationBarItemDefaultsColors() = androidx.compose.material3.NavigationBarItemDefaults.colors(
     selectedIconColor = FinTrackNavy,

@@ -33,13 +33,14 @@ import com.fintrack.app.ui.theme.FinTrackTeal
  */
 object FakeData {
 
-
+    // Resumen mostrado en la pantalla de Inicio (Home).
     const val USER_NAME = "Carlos Mendoza"
     const val TOTAL_BALANCE = 45280.50
     const val BALANCE_CHANGE_PERCENT = 8.4
     const val MONTHLY_INCOME = 5400.00
     const val MONTHLY_EXPENSES = 2120.00
 
+    // Cuentas de ejemplo que se listan en la pantalla "Mis Cuentas".
     val accounts = listOf(
         Account(
             id = "acc-1",
@@ -71,6 +72,7 @@ object FakeData {
         )
     )
 
+    // Movimientos de ejemplo que aparecen en Inicio y en Transacciones.
     val transactions = listOf(
         Transaction(
             id = "tx-1",
@@ -124,6 +126,7 @@ object FakeData {
         )
     )
 
+    // Totales y límites por categoría para la pantalla de Presupuestos.
     const val BUDGET_TOTAL_SPENT = 2060.00
     const val BUDGET_TOTAL_LIMIT = 2700.00
 
@@ -134,10 +137,12 @@ object FakeData {
         BudgetCategoryLimit("Servicios Básicos", 150.00, 400.00, FinTrackPurple)
     )
 
+    // Texto fijo de análisis de tendencia mostrado en la pantalla de Predicción.
     const val TREND_ANALYSIS_TEXT =
         "Basado en tus últimos 3 meses, se prevé una tendencia de ahorro ascendente de un 12%. " +
             "Recomendamos mantener los límites actuales."
 
+    // Puntos del gráfico de gasto mensual (los últimos 3 son reales, "Nov*" es proyectado).
     val monthProjections = listOf(
         MonthProjection("Ago", 2100.0, "\$2.1k", isProjected = false),
         MonthProjection("Sep", 2300.0, "\$2.3k", isProjected = false),
@@ -145,12 +150,14 @@ object FakeData {
         MonthProjection("Nov*", 2240.0, "\$2.24k", isProjected = true)
     )
 
+    // Predicciones de gasto para los próximos meses, con su nivel de confianza.
     val futurePredictions = listOf(
         FuturePrediction("Noviembre (Próximo)", 2240.00, "Alta confianza"),
         FuturePrediction("Diciembre", 2610.00, "Confianza Media"),
         FuturePrediction("Enero", 2080.00, "Confianza Media")
     )
 
+    // Categorías de gasto que se listan en la pantalla de Categorías.
     val categories = listOf(
         SpendingCategory(
             id = "cat-1",
@@ -194,6 +201,8 @@ object FakeData {
         )
     )
 
+    // Subcategorías agrupadas por id de categoría (por eso es un Map).
+    // Solo "cat-1" tiene datos de ejemplo cargados.
     val subcategoriesByCategory: Map<String, List<Subcategory>> = mapOf(
         "cat-1" to listOf(
             Subcategory("sub-1", "Restaurantes y cafeterías", "Sin límite"),
@@ -204,6 +213,7 @@ object FakeData {
         )
     )
 
+    // Datos del usuario mostrados en la pantalla de Perfil.
     val userProfile = UserProfile(
         name = "Carlos Mendoza",
         email = "carlos.mendoza@email.com",

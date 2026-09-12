@@ -53,6 +53,7 @@ import com.fintrack.app.ui.theme.FinTrackPurple
 import com.fintrack.app.ui.theme.FinTrackRed
 import com.fintrack.app.ui.theme.FinTrackTeal
 
+// Colores disponibles para elegir al crear una nueva categoría de presupuesto.
 private val budgetCategoryColors = listOf(
     FinTrackNavy,
     FinTrackGreen,
@@ -62,11 +63,15 @@ private val budgetCategoryColors = listOf(
     FinTrackTeal
 )
 
+// Pantalla de Presupuestos: gasto total vs límite, y una tarjeta con barra de
+// progreso por cada categoría presupuestada. Permite agregar categorías nuevas
+// mediante un popup (AddBudgetCategoryDialog).
 @Composable
 fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
     var budgetCategories by remember { mutableStateOf(FakeData.budgetCategories) }
     var isAddingCategory by remember { mutableStateOf(false) }
 
+    // Mientras isAddingCategory sea true se muestra el popup para crear una categoría.
     if (isAddingCategory) {
         AddBudgetCategoryDialog(
             onDismiss = { isAddingCategory = false },
@@ -91,6 +96,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
 
         item {
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                // Tarjeta con el total gastado vs. el límite total, y su barra de progreso.
                 SectionCard {
                     Text(
                         text = "Gasto Total Presupuestado",
@@ -140,6 +146,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
             }
         }
 
+        // Botón al final de la lista que abre el popup para agregar categoría.
         item {
             Button(
                 onClick = { isAddingCategory = true },
@@ -158,6 +165,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
     }
 }
 
+// Tarjeta de una categoría de presupuesto: barra de progreso + montos gastado/límite.
 @Composable
 private fun BudgetCategoryCard(category: BudgetCategoryLimit, modifier: Modifier = Modifier) {
     SectionCard(modifier = modifier) {
@@ -187,6 +195,9 @@ private fun BudgetCategoryCard(category: BudgetCategoryLimit, modifier: Modifier
     }
 }
 
+// Popup para crear una categoría de presupuesto nueva: nombre, límite mensual
+// y color (elegido de budgetCategoryColors). Igual que en Cuentas, el diálogo
+// solo junta los datos y se los entrega a onConfirm.
 @Composable
 private fun AddBudgetCategoryDialog(
     onDismiss: () -> Unit,
@@ -197,6 +208,7 @@ private fun AddBudgetCategoryDialog(
     var selectedColor by remember { mutableStateOf(budgetCategoryColors.first()) }
 
     val limit = limitText.toDoubleOrNull()
+    // Válido si hay nombre y el límite es un número mayor a 0.
     val isValid = name.isNotBlank() && limit != null && limit > 0
 
     AlertDialog(

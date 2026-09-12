@@ -37,6 +37,8 @@ import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 
+// Pantalla de Inicio: saludo, balance total, resumen mensual y accesos rápidos.
+// Es la primera pantalla que ve el usuario al abrir la app.
 @Composable
 fun HomeScreen(
     onNavigateToAccounts: () -> Unit,
@@ -56,6 +58,7 @@ fun HomeScreen(
 
                 BalanceCard(modifier = Modifier.padding(top = 16.dp))
 
+                // Tarjeta con dos barras de progreso: ingresos y gastos del mes.
                 SectionCard(modifier = Modifier.padding(top = 16.dp)) {
                     Text(
                         text = "Resumen Mensual",
@@ -65,13 +68,14 @@ fun HomeScreen(
                     LabeledProgressBar(
                         label = "Ingresos",
                         valueText = formatCurrency(FakeData.MONTHLY_INCOME),
-                        progress = 1f,
+                        progress = 1f, // los ingresos siempre se muestran a barra completa
                         progressColor = FinTrackGreen,
                         modifier = Modifier.padding(top = 16.dp)
                     )
                     LabeledProgressBar(
                         label = "Gastos",
                         valueText = formatCurrency(FakeData.MONTHLY_EXPENSES),
+                        // el progreso de gastos se muestra como proporción de los ingresos
                         progress = (FakeData.MONTHLY_EXPENSES / FakeData.MONTHLY_INCOME).toFloat(),
                         progressColor = FinTrackNavy,
                         modifier = Modifier.padding(top = 16.dp)
@@ -84,6 +88,7 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 24.dp, bottom = 12.dp)
                 )
+                // Dos atajos: ir a Cuentas o ir a Transacciones (para agregar una).
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -112,6 +117,7 @@ fun HomeScreen(
     }
 }
 
+// Tarjeta con las iniciales del usuario y un saludo ("¡Hola de nuevo!").
 @Composable
 private fun GreetingCard(modifier: Modifier = Modifier) {
     Card(
@@ -140,6 +146,7 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
     }
 }
 
+// Tarjeta azul grande con el balance total disponible y el cambio porcentual del mes.
 @Composable
 private fun BalanceCard(modifier: Modifier = Modifier) {
     Card(

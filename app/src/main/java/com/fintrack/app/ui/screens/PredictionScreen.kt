@@ -35,6 +35,8 @@ import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.ProgressTrack
 
+// Pantalla de Predicción: análisis de tendencia, gráfico de barras de
+// proyección mensual y una lista de predicciones de gasto futuro.
 @Composable
 fun PredictionScreen(onOpenProfile: () -> Unit = {}) {
     LazyColumn(
@@ -62,6 +64,7 @@ fun PredictionScreen(onOpenProfile: () -> Unit = {}) {
             }
         }
 
+        // Lista de predicciones a futuro (una tarjeta por mes).
         items(FakeData.futurePredictions) { prediction ->
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 PredictionRow(prediction)
@@ -72,6 +75,7 @@ fun PredictionScreen(onOpenProfile: () -> Unit = {}) {
     }
 }
 
+// Tarjeta verde con el resumen de tendencia de ahorro/gasto (texto fijo de FakeData).
 @Composable
 private fun TrendAnalysisCard(modifier: Modifier = Modifier) {
     Surface(
@@ -99,9 +103,11 @@ private fun TrendAnalysisCard(modifier: Modifier = Modifier) {
     }
 }
 
+// Gráfico de barras "a mano" (sin librería externa): cada barra es una Column
+// vacía cuya altura se calcula en proporción al monto máximo de la lista.
 @Composable
 private fun ProjectionBarChart(projections: List<MonthProjection>, modifier: Modifier = Modifier) {
-    val maxAmount = projections.maxOf { it.amount }
+    val maxAmount = projections.maxOf { it.amount } // referencia para escalar la altura de las barras
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -151,6 +157,7 @@ private fun ProjectionBarChart(projections: List<MonthProjection>, modifier: Mod
     }
 }
 
+// Tarjeta de una predicción: mes + nivel de confianza a la izquierda, monto estimado a la derecha.
 @Composable
 private fun PredictionRow(prediction: FuturePrediction, modifier: Modifier = Modifier) {
     SectionCard(modifier = modifier) {

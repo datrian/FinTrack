@@ -47,57 +47,75 @@ import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackOrange
 import com.fintrack.app.ui.theme.FinTrackRed
 
+// Pantalla principal de "Mis Cuentas". Compose la vuelve a dibujar automáticamente
+// cada vez que cambia alguno de los "state" (accounts, isAddingAccount) que lee.
 @Composable
 fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}) {
+    // Lista de cuentas mostrada en pantalla. Arranca con los datos de ejemplo
+    // (FakeData) y "remember" hace que Compose la recuerde entre recomposiciones
+    // (si no la guardáramos así, se perdería cada vez que la UI se redibuja).
     var accounts by remember { mutableStateOf(FakeData.accounts) }
+
+    // Bandera que controla si el popup de "nueva cuenta" está visible o no.
     var isAddingAccount by remember { mutableStateOf(false) }
 
+    // Mientras la bandera esté en true, se muestra el diálogo emergente.
     if (isAddingAccount) {
         AddAccountDialog(
+            // Se ejecuta al cancelar o tocar fuera del popup: solo lo cierra.
             onDismiss = { isAddingAccount = false },
+            // Se ejecuta al presionar "Agregar" con datos válidos.
             onConfirm = { name, subtitle, type, balance ->
+                // Agrega la nueva cuenta a la lista existente (no la modifica,
+                // crea una lista nueva con "+", que es como se maneja el estado
+                // inmutable en Compose).
                 accounts = accounts + Account(
-                    id = "acc-${System.currentTimeMillis()}",
+                    id = "acc-${System.currentTimeMillis()}", // id simple basado en la hora actual
                     name = name,
                     subtitle = subtitle,
                     type = type,
                     balance = balance
                 )
-                isAddingAccount = false
+                isAddingAccount = false // cierra el popup tras guardar
             }
         )
     }
 
+    // Lista con scroll vertical que contiene toda la pantalla.
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // Barra superior con el título de la pantalla.
         item { FinTrackTopBar(title = "Mis Cuentas", onMenuClick = onOpenProfile) }
 
+        // Una tarjeta (AccountCard) por cada cuenta en la lista.
         items(accounts) { account ->
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 AccountCard(account)
             }
         }
 
+        // Botón al final de la lista para abrir el popup de nueva cuenta.
         item {
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 AddAccountButton(onClick = {
-                    isAddingAccount = true
-                    onAddAccount()
+                    isAddingAccount = true // abre el popup
+                    onAddAccount() // avisa también a quien use esta pantalla (navegación, etc.)
                 })
             }
         }
     }
 }
 
+// Tarjeta visual de una sola cuenta: nombre, descripción, etiqueta de tipo y saldo.
 @Composable
 private fun AccountCard(account: Account, modifier: Modifier = Modifier) {
-    SectionCard(modifier = modifier) {
+    SectionCard(modifier = modifier) { // SectionCard da el fondo blanco + bordes redondeados reutilizables
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween // nombre a la izquierda, etiqueta de tipo a la derecha
         ) {
             Column {
                 Text(text = account.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -110,12 +128,15 @@ private fun AccountCard(account: Account, modifier: Modifier = Modifier) {
             Text(
                 text = formatCurrency(account.balance),
                 style = MaterialTheme.typography.headlineSmall,
+                // si el saldo es negativo se pinta en rojo para que resalte
                 color = if (account.balance < 0) FinTrackRed else MaterialTheme.colorScheme.onSurface
             )
         }
     }
 }
 
+// Etiqueta chica y coloreada (Principal / Inversión / Crédito / Efectivo) que se
+// muestra dentro de cada AccountCard. Cada tipo tiene su propio color de fondo/texto.
 @Composable
 private fun AccountTypeTag(type: AccountType, modifier: Modifier = Modifier) {
     val (background, textColor) = when (type) {
@@ -139,6 +160,8 @@ private fun AccountTypeTag(type: AccountType, modifier: Modifier = Modifier) {
     }
 }
 
+// Botón con borde ("Agregar nueva cuenta") al final de la lista. Solo dibuja el
+// botón; quien lo use decide qué pasa al presionarlo mediante "onClick".
 @Composable
 private fun AddAccountButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
@@ -146,7 +169,7 @@ private fun AddAccountButton(onClick: () -> Unit, modifier: Modifier = Modifier)
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .border(1.dp, FinTrackNavy, RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .clickable { onClick() } // toda la fila es "clickeable", no solo el ícono o el texto
             .padding(vertical = 18.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -161,23 +184,32 @@ private fun AddAccountButton(onClick: () -> Unit, modifier: Modifier = Modifier)
     }
 }
 
+// Popup (AlertDialog) para crear una cuenta nueva. No guarda nada por sí mismo:
+// solo junta los datos que escribe el usuario y, al confirmar, se los pasa al
+// callback "onConfirm" para que quien lo llamó (AccountsScreen) decida qué hacer.
 @Composable
 private fun AddAccountDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, subtitle: String, type: AccountType, balance: Double) -> Unit
 ) {
+    // Cada campo del formulario es su propio "state": cuando el usuario escribe,
+    // Compose vuelve a dibujar solo lo necesario para reflejar el cambio.
     var name by remember { mutableStateOf("") }
     var subtitle by remember { mutableStateOf("") }
-    var balanceText by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(AccountType.PRINCIPAL) }
+    var balanceText by remember { mutableStateOf("") } // texto crudo del campo de saldo
+    var selectedType by remember { mutableStateOf(AccountType.PRINCIPAL) } // chip elegido
 
+    // Convierte el texto del saldo a número; queda null si no es un número válido.
     val balance = balanceText.toDoubleOrNull()
+    // El botón "Agregar" solo se habilita si nombre y descripción no están vacíos
+    // y el saldo es un número válido.
     val isValid = name.isNotBlank() && subtitle.isNotBlank() && balance != null
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismiss, // se llama al tocar fuera del popup o el botón atrás
         title = { Text(text = "Nueva cuenta", fontWeight = FontWeight.Bold) },
         text = {
+            // Cuerpo del popup: instrucciones + campos de texto + selector de tipo.
             Column {
                 Text(
                     text = "Completa los datos de la cuenta que quieres agregar.",
@@ -185,6 +217,7 @@ private fun AddAccountDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
+                // Campo: nombre de la cuenta.
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -194,6 +227,7 @@ private fun AddAccountDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+                // Campo: descripción/subtítulo de la cuenta.
                 OutlinedTextField(
                     value = subtitle,
                     onValueChange = { subtitle = it },
@@ -205,6 +239,7 @@ private fun AddAccountDialog(
                         .padding(top = 12.dp),
                     shape = RoundedCornerShape(12.dp)
                 )
+                // Campo: saldo inicial. keyboardType = Decimal muestra el teclado numérico.
                 OutlinedTextField(
                     value = balanceText,
                     onValueChange = { balanceText = it },
@@ -223,6 +258,8 @@ private fun AddAccountDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
+                // Fila de "chips": uno por cada valor del enum AccountType.
+                // Al tocar uno, se marca como seleccionado (fondo navy + texto blanco).
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AccountType.entries.forEach { type ->
                         val isSelected = type == selectedType
@@ -244,6 +281,7 @@ private fun AddAccountDialog(
             }
         },
         confirmButton = {
+            // Deshabilitado (enabled = isValid) hasta que el formulario sea válido.
             Button(
                 onClick = { onConfirm(name.trim(), subtitle.trim(), selectedType, balance ?: 0.0) },
                 enabled = isValid,
@@ -254,6 +292,7 @@ private fun AddAccountDialog(
             }
         },
         dismissButton = {
+            // Cierra el popup sin guardar nada.
             TextButton(onClick = onDismiss) {
                 Text(text = "Cancelar")
             }

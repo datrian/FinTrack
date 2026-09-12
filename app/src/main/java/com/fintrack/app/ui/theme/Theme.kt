@@ -11,6 +11,9 @@ import androidx.compose.ui.graphics.Color
 private val DarkBackground = Color(0xFF0F1115)
 private val DarkSurface = Color(0xFF1B1E24)
 
+// Mapea la paleta de FinTrack (Color.kt) a los "roles" de color que Material 3
+// espera (primary, background, surface, etc). Así, cualquier componente que use
+// MaterialTheme.colorScheme.xxx automáticamente respeta los colores de la marca.
 private val LightColors = lightColorScheme(
     primary = FinTrackNavy,
     onPrimary = SurfaceWhite,
@@ -26,6 +29,7 @@ private val LightColors = lightColorScheme(
     outline = OutlineGray
 )
 
+// Misma idea que LightColors, pero para modo oscuro.
 private val DarkColors = darkColorScheme(
     primary = FinTrackNavy,
     onPrimary = SurfaceWhite,
@@ -41,9 +45,11 @@ private val DarkColors = darkColorScheme(
     outline = OutlineGray
 )
 
+// Envoltorio que aplica el tema de FinTrack (colores + tipografía) a todo lo
+// que se dibuje adentro de "content". Se usa una sola vez, en MainActivity.
 @Composable
 fun FinTrackTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = isSystemInDarkTheme(), // por defecto sigue el tema del sistema (claro/oscuro)
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors

@@ -36,12 +36,17 @@ import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.theme.FinTrackNavy
 import androidx.compose.material3.Icon
 
+// Los 3 filtros disponibles sobre la lista de movimientos.
 private enum class TransactionFilter(val label: String) { TODAS("Todas"), GASTOS("Gastos"), INGRESOS("Ingresos") }
 
+// Pantalla de Transacciones: lista de movimientos con filtro por tipo (todas/gastos/ingresos).
 @Composable
 fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
+    // Filtro actualmente seleccionado; al cambiar, la lista se recalcula sola.
     var selectedFilter by remember { mutableStateOf(TransactionFilter.TODAS) }
 
+    // Se recalcula en cada recomposición según el filtro elegido (no se guarda
+    // una copia filtrada por separado, se deriva directo de los datos).
     val filtered = when (selectedFilter) {
         TransactionFilter.TODAS -> FakeData.transactions
         TransactionFilter.GASTOS -> FakeData.transactions.filter { it.direction == TransactionDirection.GASTO }
@@ -82,6 +87,7 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
     }
 }
 
+// Botoncito tipo "pastilla" para cada filtro (Todas/Gastos/Ingresos).
 @Composable
 private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
@@ -99,6 +105,8 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+// Una fila de la lista: ícono, título, categoría/fecha, y el monto (verde si
+// es un ingreso, rojo si es un gasto, gracias a amountColor).
 @Composable
 private fun TransactionRow(transaction: Transaction, modifier: Modifier = Modifier) {
     Row(

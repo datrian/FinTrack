@@ -37,15 +37,20 @@ import com.fintrack.app.ui.components.NavigationRowItem
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackNavy
 
+// Pantalla de Categorías: lista de categorías de gasto, cada una navegable a
+// sus subcategorías. A diferencia de Cuentas/Presupuesto, acá el "agregar" es
+// una fila que se transforma en un campo de texto en vez de abrir un popup.
 @Composable
 fun CategoriesScreen(
     onBack: () -> Unit,
     onCategoryClick: (String) -> Unit
 ) {
     var categories by remember { mutableStateOf(FakeData.categories) }
+    // Controla si se muestra el campo de texto para escribir el nombre o el botón "Crear".
     var isAddingCategory by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
 
+    // Agrega la categoría escrita (si no está vacía) y cierra el campo de texto.
     fun commitNewCategory() {
         if (newCategoryName.isNotBlank()) {
             categories = categories + SpendingCategory(
@@ -77,6 +82,7 @@ fun CategoriesScreen(
             )
         }
 
+        // Lista de categorías dentro de una única tarjeta, separadas por líneas divisorias.
         item {
             SectionCard(modifier = Modifier.padding(horizontal = 20.dp)) {
                 categories.forEachIndexed { index, category ->
@@ -88,6 +94,8 @@ fun CategoriesScreen(
             }
         }
 
+        // Al final: o el campo de texto para escribir el nombre (si isAddingCategory
+        // es true), o el botón "Crear nueva categoría" que lo abre.
         item {
             if (isAddingCategory) {
                 Row(
@@ -129,6 +137,8 @@ fun CategoriesScreen(
     }
 }
 
+// Una fila de categoría: ícono circular + título/subtítulo (usa NavigationRowItem,
+// que ya agrega la flechita ">" para indicar que es navegable).
 @Composable
 private fun CategoryRow(category: SpendingCategory, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(

@@ -6,6 +6,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
+// Define los tamaños/pesos de texto de la app (títulos, cuerpo, etiquetas).
+// Cuando una pantalla usa MaterialTheme.typography.titleMedium, por ejemplo,
+// termina usando el estilo definido acá.
 val FinTrackTypography = Typography(
     headlineSmall = TextStyle(
         fontFamily = FontFamily.Default,

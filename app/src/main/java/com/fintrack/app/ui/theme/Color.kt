@@ -2,6 +2,8 @@ package com.fintrack.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Paleta de colores de la app. Se usan en todas las pantallas en vez de
+// escribir códigos hexadecimales sueltos, así queda todo centralizado acá.
 // Core brand palette, matched to the FinTrack Figma design
 val FinTrackNavy = Color(0xFF0F2A6B)       // Primary navy blue (headers, balance card, buttons)
 val FinTrackNavyDark = Color(0xFF0A1E4D)   // Pressed / gradient end
@@ -14,7 +16,7 @@ val FinTrackTeal = Color(0xFF17A2A0)       // "Salud y Bienestar" icon tint
 val BackgroundGray = Color(0xFFF4F6FA)     // Screen background
 val SurfaceWhite = Color(0xFFFFFFFF)       // Cards
 val OutlineGray = Color(0xFFE2E5EC)        // Card borders / dividers
-val TextPrimary = Color(0xFF1B1F27)
-val TextSecondary = Color(0xFF6B7280)
+val TextPrimary = Color(0xFF1B1F27)        // Texto principal
+val TextSecondary = Color(0xFF6B7280)      // Texto secundario / subtítulos
 
-val ProgressTrack = Color(0xFFE5E8F0)
+val ProgressTrack = Color(0xFFE5E8F0)      // Fondo (riel) de las barras de progreso
