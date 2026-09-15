@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -18,9 +17,12 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.NavHostController
 import com.fintrack.app.ui.screens.AccountsScreen
+import com.fintrack.app.ui.screens.AuthWelcomeScreen
 import com.fintrack.app.ui.screens.BudgetScreen
 import com.fintrack.app.ui.screens.CategoriesScreen
+import com.fintrack.app.ui.screens.CreateUserScreen
 import com.fintrack.app.ui.screens.HomeScreen
+import com.fintrack.app.ui.screens.LoginScreen
 import com.fintrack.app.ui.screens.PredictionScreen
 import com.fintrack.app.ui.screens.ProfileScreen
 import com.fintrack.app.ui.screens.SubcategoriesScreen
@@ -41,7 +43,9 @@ fun FinTrackApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = FinTrackDestination.Home.route, // primera pantalla al abrir la app
+            // Sin sesión persistida, la app siempre arranca en el flujo de
+            // autenticación (Auth); tras iniciar sesión se navega a Home.
+            startDestination = FinTrackDestination.Auth.route,
             modifier = Modifier.padding(
                 top = innerPadding.calculateTopPadding(),
                 bottom = innerPadding.calculateBottomPadding()
@@ -50,6 +54,32 @@ fun FinTrackApp() {
             // Atajo compartido por varias pantallas para navegar a "Mi Perfil".
             val openProfile: () -> Unit = {
                 navController.navigate(FinTrackDestination.Profile.route) { launchSingleTop = true }
+            }
+
+            // Pantalla de bienvenida: elegir entre iniciar sesión o crear cuenta.
+            composableRoute(FinTrackDestination.Auth.route) {
+                AuthWelcomeScreen(
+                    onLogin = {
+                        navController.navigate(FinTrackDestination.Login.route) { launchSingleTop = true }
+                    },
+                    onCreateAccount = {
+                        navController.navigate(FinTrackDestination.CreateUser.route) { launchSingleTop = true }
+                    }
+                )
+            }
+            composableRoute(FinTrackDestination.Login.route) {
+                LoginScreen(
+                    onBack = { navController.popBackStack() },
+                    onLoginSuccess = {
+                        // Al iniciar sesión se limpia todo el flujo de auth del back stack.
+                        navController.navigate(FinTrackDestination.Home.route) {
+                            popUpTo(FinTrackDestination.Auth.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+            composableRoute(FinTrackDestination.CreateUser.route) {
+                CreateUserScreen(onBack = { navController.popBackStack() })
             }
 
             // Cada composableRoute registra una ruta y qué pantalla dibujar para ella.
@@ -93,6 +123,13 @@ fun FinTrackApp() {
                     onBack = { navController.popBackStack() },
                     onNavigateToCategories = {
                         navController.navigate(FinTrackDestination.Categories.route) { launchSingleTop = true }
+                    },
+                    onLogout = {
+                        // Cierra sesión: limpia todo el back stack y vuelve a la
+                        // pantalla de bienvenida (iniciar sesión / crear cuenta).
+                        navController.navigate(FinTrackDestination.Auth.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 )
             }
@@ -114,10 +151,14 @@ private fun androidx.navigation.NavGraphBuilder.composableRoute(
  * whether the trigger is the bottom bar itself or a shortcut like Home's Quick Access
  * cards: launchSingleTop avoids stacking duplicate destinations on repeated/rapid taps,
  * and popUpTo + restoreState keep back-stack state consistent with the bottom bar.
+ *
+ * Se ancla explícitamente en Home (no en graph.findStartDestination()) porque el
+ * NavHost arranca en Auth; una vez con sesión iniciada, Home es la raíz real de
+ * las pestañas de la barra inferior.
  */
 private fun NavHostController.navigateSingleTop(route: String) {
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(FinTrackDestination.Home.route) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }

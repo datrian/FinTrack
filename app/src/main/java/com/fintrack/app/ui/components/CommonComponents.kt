@@ -25,13 +25,19 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.fintrack.app.data.local.ProfilePhotoStore
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
@@ -276,3 +282,33 @@ fun NavigationRowItem(
 
 // Color estándar para montos: verde si es positivo (ingreso), rojo si es negativo (gasto).
 fun amountColor(isPositive: Boolean): Color = if (isPositive) FinTrackGreen else FinTrackRed
+
+// Avatar circular reutilizado por Inicio y Perfil: muestra la foto que el
+// usuario haya elegido (guardada por ProfilePhotoStore) o, si todavía no
+// eligió ninguna, sus iniciales. El tamaño y si es "clickeable" lo decide
+// quien lo usa a través de "modifier".
+@Composable
+fun ProfileAvatar(initials: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    // "remember" con el contador de versión como key: cuando se guarda una
+    // foto nueva, ProfilePhotoStore.version cambia y esto vuelve a leer el archivo.
+    val photoFile = remember(ProfilePhotoStore.version.value) { ProfilePhotoStore.photoFile(context) }
+
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(FinTrackNavy.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (photoFile != null) {
+            AsyncImage(
+                model = photoFile,
+                contentDescription = "Foto de perfil",
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(text = initials, color = FinTrackNavy, fontWeight = FontWeight.Bold)
+        }
+    }
+}

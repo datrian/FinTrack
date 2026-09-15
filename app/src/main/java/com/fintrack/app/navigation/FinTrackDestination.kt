@@ -35,6 +35,12 @@ sealed class FinTrackDestination(val route: String, val label: String, val icon:
     }
     data object Profile : FinTrackDestination("profile", "Mi Perfil", Icons.Filled.Home)
 
+    // Flujo de autenticación: se llega a él al abrir la app sin sesión activa
+    // o al cerrar sesión desde "Mi Perfil".
+    data object Auth : FinTrackDestination("auth", "Bienvenida", Icons.Filled.Home)
+    data object Login : FinTrackDestination("login", "Iniciar Sesión", Icons.Filled.Home)
+    data object CreateUser : FinTrackDestination("create_user", "Crear Usuario", Icons.Filled.Home)
+
     companion object {
         // Lista usada para dibujar los botones de la barra inferior, en orden.
         val bottomBarItems = listOf(Home, Accounts, Transactions, Budget, Prediction)

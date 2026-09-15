@@ -220,4 +220,7 @@ object FakeData {
         currency = "USD (\$)",
         budgetNotificationsEnabled = true
     )
+
+    // Contraseña del usuario de ejemplo (Carlos Mendoza), usada en la pantalla de inicio de sesión.
+    const val DEMO_PASSWORD = "1234"
 }

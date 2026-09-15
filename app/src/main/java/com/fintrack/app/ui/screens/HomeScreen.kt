@@ -1,6 +1,10 @@
 package com.fintrack.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -23,14 +26,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fintrack.app.data.FakeData
+import com.fintrack.app.data.local.ProfilePhotoStore
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
+import com.fintrack.app.ui.components.ProfileAvatar
 import com.fintrack.app.ui.components.QuickAccessCard
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.components.formatCurrency
@@ -117,9 +122,19 @@ fun HomeScreen(
     }
 }
 
-// Tarjeta con las iniciales del usuario y un saludo ("¡Hola de nuevo!").
+// Tarjeta con la foto (o iniciales) del usuario y un saludo ("¡Hola de nuevo!").
+// Tocar la foto abre el selector de imágenes del sistema para elegir una nueva.
 @Composable
 private fun GreetingCard(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            ProfilePhotoStore.savePhoto(context, uri)
+        }
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -129,15 +144,16 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.foundation.layout.Box(
+            ProfileAvatar(
+                initials = "CM",
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
-                    .background(FinTrackNavy.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "CM", color = FinTrackNavy, fontWeight = FontWeight.Bold)
-            }
+                    .clickable {
+                        pickPhotoLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+            )
             Column(modifier = Modifier.padding(start = 12.dp)) {
                 Text(text = "¡Hola de nuevo!", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(text = FakeData.USER_NAME, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)

@@ -3,7 +3,6 @@ package com.fintrack.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -29,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.FakeData
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.NavigationRowItem
+import com.fintrack.app.ui.components.ProfileAvatar
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
@@ -61,14 +60,7 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .background(FinTrackNavy.copy(alpha = 0.12f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "CM", color = FinTrackNavy, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                        }
+                        ProfileAvatar(initials = "CM", modifier = Modifier.size(72.dp))
                         Text(
                             text = profile.name,
                             style = MaterialTheme.typography.titleLarge,
