@@ -31,22 +31,25 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.FakeData
-import com.fintrack.app.data.local.AppDatabase
-import com.fintrack.app.data.local.hashPassword
+import com.fintrack.app.data.local.SessionManager
+import com.fintrack.app.data.remote.RetrofitClient
+import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
+import java.io.IOException
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 // Pantalla de inicio de sesión. Valida contra el usuario de ejemplo (Carlos
-// Mendoza / FakeData.DEMO_PASSWORD) y también contra los usuarios registrados
-// en la base de datos local mediante la pantalla "Crear cuenta".
+// Mendoza / FakeData.DEMO_PASSWORD) para pruebas rápidas de la interfaz, y
+// contra el backend (POST /api/v1/auth/login, respaldado por Neon) para
+// cualquier otra cuenta.
 @Composable
 fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val userDao = remember { AppDatabase.getInstance(context).userDao() }
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -116,12 +119,27 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
                         } else {
                             isChecking = true
                             scope.launch {
-                                val user = userDao.findByEmail(trimmedEmail)
-                                isChecking = false
-                                if (user != null && user.passwordHash == hashPassword(password)) {
+                                try {
+                                    val token = RetrofitClient.authApi.login(trimmedEmail, password)
+                                    SessionManager.saveSession(
+                                        context = context,
+                                        accessToken = token.access_token,
+                                        userId = token.usuario.id_usuario,
+                                        name = token.usuario.nombre_usuario,
+                                        email = token.usuario.correo_usuario
+                                    )
+                                    isChecking = false
                                     onLoginSuccess()
-                                } else {
-                                    errorMessage = "Correo o contraseña incorrectos"
+                                } catch (e: HttpException) {
+                                    isChecking = false
+                                    errorMessage = if (e.code() == 401) {
+                                        "Correo o contraseña incorrectos"
+                                    } else {
+                                        e.parseApiErrorMessage()
+                                    }
+                                } catch (e: IOException) {
+                                    isChecking = false
+                                    errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
                                 }
                             }
                         }

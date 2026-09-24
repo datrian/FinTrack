@@ -34,14 +34,21 @@ import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.AppDatabase
 import com.fintrack.app.data.local.UserEntity
 import com.fintrack.app.data.local.hashPassword
+import com.fintrack.app.data.remote.RegisterRequest
+import com.fintrack.app.data.remote.RetrofitClient
+import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackNavy
+import com.fintrack.app.ui.theme.FinTrackRed
+import java.io.IOException
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
-// Pantalla para registrar un usuario nuevo en la base de datos local
-// (nombre, correo y contraseña). El correo no se valida: se guarda tal cual
-// lo escribe el usuario, ya que esta pantalla es solo para alta en la BD.
+// Pantalla para registrar un usuario nuevo: el alta se hace contra el backend
+// (POST /api/v1/auth/register, que persiste en la base de datos Neon) y, si
+// resulta exitosa, se guarda también una copia local para que el inicio de
+// sesión offline (LoginScreen) siga funcionando.
 @Composable
 fun CreateUserScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -53,8 +60,9 @@ fun CreateUserScreen(onBack: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val isValid = name.isNotBlank() && email.isNotBlank() && password.isNotBlank()
+    val isValid = name.isNotBlank() && email.isNotBlank() && password.length >= 8
 
     LazyColumn(
         modifier = Modifier
@@ -95,8 +103,9 @@ fun CreateUserScreen(onBack: () -> Unit) {
                     )
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { password = it; errorMessage = null },
                         label = { Text("Contraseña") },
+                        placeholder = { Text("Mínimo 8 caracteres") },
                         singleLine = true,
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -113,22 +122,48 @@ fun CreateUserScreen(onBack: () -> Unit) {
                             .padding(top = 12.dp),
                         shape = RoundedCornerShape(12.dp)
                     )
+                    if (errorMessage != null) {
+                        Text(
+                            text = errorMessage.orEmpty(),
+                            color = FinTrackRed,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                    }
                 }
 
                 Button(
                     onClick = {
                         isSaving = true
+                        errorMessage = null
+                        val trimmedName = name.trim()
+                        val trimmedEmail = email.trim()
                         scope.launch {
-                            userDao.insertUser(
-                                UserEntity(
-                                    name = name.trim(),
-                                    email = email.trim(),
-                                    passwordHash = hashPassword(password)
+                            try {
+                                RetrofitClient.authApi.register(
+                                    RegisterRequest(
+                                        nombre_usuario = trimmedName,
+                                        correo_usuario = trimmedEmail,
+                                        password = password
+                                    )
                                 )
-                            )
-                            isSaving = false
-                            Toast.makeText(context, "Usuario creado correctamente", Toast.LENGTH_SHORT).show()
-                            onBack()
+                                userDao.insertUser(
+                                    UserEntity(
+                                        name = trimmedName,
+                                        email = trimmedEmail,
+                                        passwordHash = hashPassword(password)
+                                    )
+                                )
+                                isSaving = false
+                                Toast.makeText(context, "Usuario creado correctamente", Toast.LENGTH_SHORT).show()
+                                onBack()
+                            } catch (e: HttpException) {
+                                isSaving = false
+                                errorMessage = e.parseApiErrorMessage()
+                            } catch (e: IOException) {
+                                isSaving = false
+                                errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                            }
                         }
                     },
                     enabled = isValid && !isSaving,
