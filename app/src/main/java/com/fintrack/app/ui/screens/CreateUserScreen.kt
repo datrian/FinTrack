@@ -31,9 +31,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.fintrack.app.data.local.AppDatabase
-import com.fintrack.app.data.local.UserEntity
-import com.fintrack.app.data.local.hashPassword
 import com.fintrack.app.data.remote.RegisterRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
@@ -46,14 +43,11 @@ import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 // Pantalla para registrar un usuario nuevo: el alta se hace contra el backend
-// (POST /api/v1/auth/register, que persiste en la base de datos Neon) y, si
-// resulta exitosa, se guarda también una copia local para que el inicio de
-// sesión offline (LoginScreen) siga funcionando.
+// (POST /api/v1/auth/register, que persiste en la base de datos Neon).
 @Composable
 fun CreateUserScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val userDao = remember { AppDatabase.getInstance(context).userDao() }
 
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -145,13 +139,6 @@ fun CreateUserScreen(onBack: () -> Unit) {
                                         nombre_usuario = trimmedName,
                                         correo_usuario = trimmedEmail,
                                         password = password
-                                    )
-                                )
-                                userDao.insertUser(
-                                    UserEntity(
-                                        name = trimmedName,
-                                        email = trimmedEmail,
-                                        passwordHash = hashPassword(password)
                                     )
                                 )
                                 isSaving = false
