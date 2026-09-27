@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -39,6 +42,7 @@ import com.fintrack.app.ui.theme.FinTrackRed
 fun ProfileScreen(
     onBack: () -> Unit,
     onNavigateToCategories: () -> Unit,
+    onChangePassword: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val profile = FakeData.userProfile
@@ -106,11 +110,31 @@ fun ProfileScreen(
                     NavigationRowItem(title = "Administrar Subcategorías", onClick = onNavigateToCategories)
                 }
 
+                // Botón "Cambiar contraseña" con borde azul, arriba de cerrar sesión.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 20.dp)
+                        .border(1.dp, FinTrackNavy, RoundedCornerShape(16.dp))
+                        .clickable { onChangePassword() }
+                        .padding(vertical = 16.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Filled.Lock, contentDescription = null, tint = FinTrackNavy)
+                    Text(
+                        text = "Cambiar contraseña",
+                        color = FinTrackNavy,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+
                 // Botón "Cerrar sesión" con borde rojo, al final de la pantalla.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 20.dp)
+                        .padding(top = 12.dp, bottom = 20.dp)
                         .border(1.dp, FinTrackRed, RoundedCornerShape(16.dp))
                         .clickable { onLogout() }
                         .padding(vertical = 16.dp),
