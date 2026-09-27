@@ -34,6 +34,7 @@ sealed class FinTrackDestination(val route: String, val label: String, val icon:
         fun createRoute(categoryId: String) = "subcategories/$categoryId"
     }
     data object Profile : FinTrackDestination("profile", "Mi Perfil", Icons.Filled.Home)
+    data object ChangePassword : FinTrackDestination("change_password", "Cambiar Contraseña", Icons.Filled.Home)
 
     // Flujo de autenticación: se llega a él al abrir la app sin sesión activa
     // o al cerrar sesión desde "Mi Perfil".

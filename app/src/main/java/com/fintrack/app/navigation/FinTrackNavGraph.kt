@@ -20,6 +20,7 @@ import com.fintrack.app.ui.screens.AccountsScreen
 import com.fintrack.app.ui.screens.AuthWelcomeScreen
 import com.fintrack.app.ui.screens.BudgetScreen
 import com.fintrack.app.ui.screens.CategoriesScreen
+import com.fintrack.app.ui.screens.ChangePasswordScreen
 import com.fintrack.app.ui.screens.CreateUserScreen
 import com.fintrack.app.ui.screens.HomeScreen
 import com.fintrack.app.ui.screens.LoginScreen
@@ -124,6 +125,9 @@ fun FinTrackApp() {
                     onNavigateToCategories = {
                         navController.navigate(FinTrackDestination.Categories.route) { launchSingleTop = true }
                     },
+                    onChangePassword = {
+                        navController.navigate(FinTrackDestination.ChangePassword.route) { launchSingleTop = true }
+                    },
                     onLogout = {
                         // Cierra sesión: limpia todo el back stack y vuelve a la
                         // pantalla de bienvenida (iniciar sesión / crear cuenta).
@@ -132,6 +136,9 @@ fun FinTrackApp() {
                         }
                     }
                 )
+            }
+            composableRoute(FinTrackDestination.ChangePassword.route) {
+                ChangePasswordScreen(onBack = { navController.popBackStack() })
             }
         }
     }
