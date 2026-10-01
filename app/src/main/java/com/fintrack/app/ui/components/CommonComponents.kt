@@ -43,6 +43,9 @@ import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
 import com.fintrack.app.ui.theme.ProgressTrack
 import java.text.NumberFormat
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // Piezas de UI reutilizadas por varias pantallas (barras superiores, tarjetas,
@@ -53,6 +56,19 @@ private val currencyFormat: NumberFormat = NumberFormat.getCurrencyInstance(Loca
 
 // Formatea un número como moneda (ej. 1234.5 -> "$1,234.50").
 fun formatCurrency(amount: Double): String = currencyFormat.format(amount)
+
+private val registrationDateOutputFormat =
+    DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale("es", "ES"))
+
+// Formatea la fecha ISO 8601 que devuelve el backend (fecha_registro_usuario,
+// con o sin zona horaria) a "15 de enero de 2024". Si no se puede interpretar,
+// se muestra tal cual llegó en vez de romper la pantalla.
+fun formatRegistrationDate(isoDateTime: String): String {
+    val date = runCatching { OffsetDateTime.parse(isoDateTime).toLocalDate() }
+        .recoverCatching { LocalDateTime.parse(isoDateTime).toLocalDate() }
+        .getOrNull() ?: return isoDateTime
+    return date.format(registrationDateOutputFormat)
+}
 
 /** Top app bar used on every top-level screen: hamburger menu, screen title and logo. */
 @Composable
@@ -282,6 +298,12 @@ fun NavigationRowItem(
 
 // Color estándar para montos: verde si es positivo (ingreso), rojo si es negativo (gasto).
 fun amountColor(isPositive: Boolean): Color = if (isPositive) FinTrackGreen else FinTrackRed
+
+// Iniciales mostradas en ProfileAvatar mientras no hay foto de perfil (ej. "Carlos Mendoza" -> "CM").
+fun initialsOf(name: String): String {
+    val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    return words.take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
+}
 
 // Avatar circular reutilizado por Inicio y Perfil: muestra la foto que el
 // usuario haya elegido (guardada por ProfilePhotoStore) o, si todavía no

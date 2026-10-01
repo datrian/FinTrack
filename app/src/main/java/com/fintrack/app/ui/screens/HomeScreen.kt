@@ -24,6 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,12 +35,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fintrack.app.data.FakeData
 import com.fintrack.app.data.local.ProfilePhotoStore
+import com.fintrack.app.data.local.UserProfileStore
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
 import com.fintrack.app.ui.components.ProfileAvatar
 import com.fintrack.app.ui.components.QuickAccessCard
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.components.formatCurrency
+import com.fintrack.app.ui.components.initialsOf
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 
@@ -135,6 +139,14 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
         }
     }
 
+    val profile by UserProfileStore.profile
+    // Si Mi Perfil ya lo cargó antes, se reutiliza; si no, se trae aquí.
+    LaunchedEffect(Unit) {
+        if (profile == null) {
+            runCatching { UserProfileStore.refresh(context) }
+        }
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -145,7 +157,7 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             ProfileAvatar(
-                initials = "CM",
+                initials = profile?.name?.let { initialsOf(it) } ?: "",
                 modifier = Modifier
                     .size(48.dp)
                     .clickable {
@@ -156,7 +168,7 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
             )
             Column(modifier = Modifier.padding(start = 12.dp)) {
                 Text(text = "¡Hola de nuevo!", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = FakeData.USER_NAME, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                Text(text = profile?.name ?: "Usuario", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }

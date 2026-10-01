@@ -87,10 +87,18 @@ data class Subcategory(
     val limitLabel: String
 )
 
-// Datos del usuario que se muestran/editan en la pantalla de Perfil.
+// Datos del usuario que se muestran/editan en la pantalla de Perfil, traídos
+// de GET /api/v1/usuarios/me. "currency" es un valor de interfaz fijo: el
+// backend todavía no expone una moneda principal configurable.
 data class UserProfile(
+    val id: String,
     val name: String,
     val email: String,
     val currency: String,
-    val budgetNotificationsEnabled: Boolean
+    val profilePhotoPath: String?,
+    val budgetNotificationsEnabled: Boolean,
+    val periodicNotificationsEnabled: Boolean,
+    val isActive: Boolean,
+    val registrationDate: String,
+    val deactivationDate: String?
 )

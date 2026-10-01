@@ -112,7 +112,7 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
                 Button(
                     onClick = {
                         val trimmedEmail = email.trim()
-                        val isDemoUser = trimmedEmail.equals(FakeData.userProfile.email, ignoreCase = true) &&
+                        val isDemoUser = trimmedEmail.equals(FakeData.DEMO_EMAIL, ignoreCase = true) &&
                             password == FakeData.DEMO_PASSWORD
                         if (isDemoUser) {
                             onLoginSuccess()

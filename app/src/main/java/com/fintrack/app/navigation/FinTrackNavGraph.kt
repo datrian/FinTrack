@@ -129,8 +129,10 @@ fun FinTrackApp() {
                         navController.navigate(FinTrackDestination.ChangePassword.route) { launchSingleTop = true }
                     },
                     onLogout = {
-                        // Cierra sesión: limpia todo el back stack y vuelve a la
-                        // pantalla de bienvenida (iniciar sesión / crear cuenta).
+                        // Cierra sesión: limpia el perfil en caché y todo el back
+                        // stack, y vuelve a la pantalla de bienvenida (iniciar
+                        // sesión / crear cuenta).
+                        com.fintrack.app.data.local.UserProfileStore.clear()
                         navController.navigate(FinTrackDestination.Auth.route) {
                             popUpTo(0) { inclusive = true }
                         }
