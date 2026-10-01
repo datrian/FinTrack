@@ -185,7 +185,7 @@ fun ProfileScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            ProfileAvatar(initials = initialsOf(currentProfile.name), modifier = Modifier.size(72.dp))
+                            ProfileAvatar(initials = initialsOf(currentProfile.name), userId = currentProfile.id, modifier = Modifier.size(72.dp))
                             Text(
                                 text = currentProfile.name,
                                 style = MaterialTheme.typography.titleLarge,

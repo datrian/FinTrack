@@ -131,15 +131,16 @@ fun HomeScreen(
 @Composable
 private fun GreetingCard(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val profile by UserProfileStore.profile
+
     val pickPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        if (uri != null) {
-            ProfilePhotoStore.savePhoto(context, uri)
+        val userId = profile?.id
+        if (uri != null && userId != null) {
+            ProfilePhotoStore.savePhoto(context, userId, uri)
         }
     }
-
-    val profile by UserProfileStore.profile
     // Si Mi Perfil ya lo cargó antes, se reutiliza; si no, se trae aquí.
     LaunchedEffect(Unit) {
         if (profile == null) {
@@ -158,9 +159,10 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
         ) {
             ProfileAvatar(
                 initials = profile?.name?.let { initialsOf(it) } ?: "",
+                userId = profile?.id,
                 modifier = Modifier
                     .size(48.dp)
-                    .clickable {
+                    .clickable(enabled = profile != null) {
                         pickPhotoLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )

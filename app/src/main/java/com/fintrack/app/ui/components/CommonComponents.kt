@@ -306,15 +306,15 @@ fun initialsOf(name: String): String {
 }
 
 // Avatar circular reutilizado por Inicio y Perfil: muestra la foto que el
-// usuario haya elegido (guardada por ProfilePhotoStore) o, si todavía no
-// eligió ninguna, sus iniciales. El tamaño y si es "clickeable" lo decide
-// quien lo usa a través de "modifier".
+// usuario haya elegido (guardada por ProfilePhotoStore, una por cada
+// id_usuario) o, si todavía no eligió ninguna, sus iniciales. El tamaño y si
+// es "clickeable" lo decide quien lo usa a través de "modifier".
 @Composable
-fun ProfileAvatar(initials: String, modifier: Modifier = Modifier) {
+fun ProfileAvatar(initials: String, userId: String?, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    // "remember" con el contador de versión como key: cuando se guarda una
-    // foto nueva, ProfilePhotoStore.version cambia y esto vuelve a leer el archivo.
-    val photoFile = remember(ProfilePhotoStore.version.value) { ProfilePhotoStore.photoFile(context) }
+    // "remember" con el id de usuario y el contador de versión como key: al
+    // cambiar de cuenta o guardar una foto nueva, vuelve a leer del disco.
+    val photoFile = remember(userId, ProfilePhotoStore.version.value) { ProfilePhotoStore.photoFile(context, userId) }
 
     Box(
         modifier = modifier
