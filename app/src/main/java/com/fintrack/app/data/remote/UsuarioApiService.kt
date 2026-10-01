@@ -12,6 +12,13 @@ data class CambiarPasswordRequest(
     val password_nuevo: String
 )
 
+data class ActualizarPerfilRequest(
+    val nombre_usuario: String? = null,
+    val ruta_foto_perfil_local_usuario: String? = null,
+    val notificaciones_presupuesto: Boolean? = null,
+    val notificaciones_periodicas: Boolean? = null
+)
+
 data class UsuarioPerfilResponse(
     val id_usuario: String,
     val nombre_usuario: String,
@@ -28,6 +35,15 @@ interface UsuarioApiService {
     // Requiere sesión activa (Authorization: Bearer <token>).
     @GET("api/v1/usuarios/me")
     suspend fun obtenerMiPerfil(@Header("Authorization") authorization: String): UsuarioPerfilResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Actualización
+    // parcial: los campos en null de ActualizarPerfilRequest se omiten del
+    // JSON (Gson no serializa nulls por defecto) y el backend no los toca.
+    @PATCH("api/v1/usuarios/me")
+    suspend fun actualizarMiPerfil(
+        @Header("Authorization") authorization: String,
+        @Body request: ActualizarPerfilRequest
+    ): UsuarioPerfilResponse
 
     // Requiere sesión activa (Authorization: Bearer <token>). El backend
     // responde 204 sin cuerpo si el cambio fue exitoso.

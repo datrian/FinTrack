@@ -1,8 +1,12 @@
 package com.fintrack.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,11 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -33,8 +40,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.fintrack.app.data.local.ProfilePhotoStore
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.local.UserProfileStore
+import com.fintrack.app.data.model.UserProfile
+import com.fintrack.app.data.remote.ActualizarPerfilRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
@@ -90,6 +100,15 @@ fun ProfileScreen(
 
     // Estado local del switch de notificaciones, inicializado con el valor guardado en el perfil.
     var notificationsEnabled by remember(currentProfile) { mutableStateOf(currentProfile?.budgetNotificationsEnabled ?: false) }
+
+    var showEditDialog by remember { mutableStateOf(false) }
+    if (showEditDialog && currentProfile != null) {
+        EditProfileDialog(
+            profile = currentProfile,
+            onDismiss = { showEditDialog = false },
+            onSaved = { showEditDialog = false }
+        )
+    }
 
     var showDeactivateDialog by remember { mutableStateOf(false) }
     var isDeactivating by remember { mutableStateOf(false) }
@@ -181,28 +200,36 @@ fun ProfileScreen(
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     // Tarjeta con avatar (iniciales), nombre y correo del usuario.
                     SectionCard {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            ProfileAvatar(initials = initialsOf(currentProfile.name), userId = currentProfile.id, modifier = Modifier.size(72.dp))
-                            Text(
-                                text = currentProfile.name,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(top = 12.dp)
-                            )
-                            Text(
-                                text = currentProfile.email,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Miembro desde ${formatRegistrationDate(currentProfile.registrationDate)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                ProfileAvatar(initials = initialsOf(currentProfile.name), userId = currentProfile.id, modifier = Modifier.size(72.dp))
+                                Text(
+                                    text = currentProfile.name,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = 12.dp)
+                                )
+                                Text(
+                                    text = currentProfile.email,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Miembro desde ${formatRegistrationDate(currentProfile.registrationDate)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { showEditDialog = true },
+                                modifier = Modifier.align(Alignment.TopEnd)
+                            ) {
+                                Icon(imageVector = Icons.Filled.Edit, contentDescription = "Editar perfil", tint = FinTrackNavy)
+                            }
                         }
                     }
 
@@ -301,4 +328,159 @@ fun ProfileScreen(
             }
         }
     }
+}
+
+// Ventana para editar nombre, foto de perfil y ambas notificaciones, con
+// PATCH a /api/v1/usuarios/me. La foto se guarda localmente (por usuario) al
+// tocarla, igual que en Inicio; "Guardar" manda al backend el nombre, las
+// notificaciones y la ruta local de la foto ya guardada (si existe alguna).
+@Composable
+private fun EditProfileDialog(
+    profile: UserProfile,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf(profile.name) }
+    var budgetNotificationsEnabled by remember { mutableStateOf(profile.budgetNotificationsEnabled) }
+    var periodicNotificationsEnabled by remember { mutableStateOf(profile.periodicNotificationsEnabled) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            ProfilePhotoStore.savePhoto(context, profile.id, uri)
+        }
+    }
+
+    val isNameValid = name.trim().length in 2..100
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text("Editar perfil") },
+        text = {
+            Column {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    ProfileAvatar(
+                        initials = initialsOf(name.ifBlank { profile.name }),
+                        userId = profile.id,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clickable {
+                                pickPhotoLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                    )
+                }
+                Text(
+                    text = "Toca la foto para cambiarla",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 16.dp)
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Nombre") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Notificaciones de presupuesto",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = budgetNotificationsEnabled,
+                        onCheckedChange = { budgetNotificationsEnabled = it },
+                        colors = SwitchDefaults.colors(checkedTrackColor = FinTrackGreen)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Notificaciones periódicas",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = periodicNotificationsEnabled,
+                        onCheckedChange = { periodicNotificationsEnabled = it },
+                        colors = SwitchDefaults.colors(checkedTrackColor = FinTrackGreen)
+                    )
+                }
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = isNameValid && !isSaving,
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val photoPath = ProfilePhotoStore.photoFile(context, profile.id)?.absolutePath
+                            RetrofitClient.usuarioApi.actualizarMiPerfil(
+                                authorization = "Bearer $token",
+                                request = ActualizarPerfilRequest(
+                                    nombre_usuario = name.trim(),
+                                    ruta_foto_perfil_local_usuario = photoPath,
+                                    notificaciones_presupuesto = budgetNotificationsEnabled,
+                                    notificaciones_periodicas = periodicNotificationsEnabled
+                                )
+                            )
+                            UserProfileStore.refresh(context)
+                            isSaving = false
+                            onSaved()
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                }
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar", color = FinTrackNavy, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancelar") }
+        }
+    )
 }
