@@ -13,12 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,7 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.local.UserProfileStore
+import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.NavigationRowItem
@@ -86,6 +90,54 @@ fun ProfileScreen(
 
     // Estado local del switch de notificaciones, inicializado con el valor guardado en el perfil.
     var notificationsEnabled by remember(currentProfile) { mutableStateOf(currentProfile?.budgetNotificationsEnabled ?: false) }
+
+    var showDeactivateDialog by remember { mutableStateOf(false) }
+    var isDeactivating by remember { mutableStateOf(false) }
+    var deactivateError by remember { mutableStateOf<String?>(null) }
+
+    if (showDeactivateDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeactivateDialog = false },
+            title = { Text("Desactivar mi cuenta") },
+            text = { Text("Tu cuenta quedará desactivada y se cerrará tu sesión. ¿Deseas continuar?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeactivateDialog = false
+                        scope.launch {
+                            isDeactivating = true
+                            deactivateError = null
+                            try {
+                                val token = SessionManager.getAccessToken(context)
+                                    ?: throw IllegalStateException("No hay sesión activa")
+                                val response = RetrofitClient.usuarioApi.desactivarMiCuenta("Bearer $token")
+                                if (response.isSuccessful) {
+                                    SessionManager.clearSession(context)
+                                    UserProfileStore.clear()
+                                    onLogout()
+                                } else {
+                                    throw HttpException(response)
+                                }
+                            } catch (e: HttpException) {
+                                deactivateError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                            } catch (e: IOException) {
+                                deactivateError = "No se pudo conectar con el servidor. Revisa tu conexión."
+                            } catch (e: IllegalStateException) {
+                                deactivateError = "Tu sesión expiró. Vuelve a iniciar sesión."
+                            } finally {
+                                isDeactivating = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(text = "Desactivar", color = FinTrackRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeactivateDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -205,17 +257,45 @@ fun ProfileScreen(
                         )
                     }
 
-                    // Botón "Cerrar sesión" con borde rojo, al final de la pantalla.
+                    // Botón "Cerrar sesión" con borde rojo.
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp, bottom = 20.dp)
+                            .padding(top = 12.dp)
                             .border(1.dp, FinTrackRed, RoundedCornerShape(16.dp))
                             .clickable { onLogout() }
                             .padding(vertical = 16.dp),
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
                     ) {
                         Text(text = "Cerrar sesión", color = FinTrackRed, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Botón "Desactivar mi cuenta", con fondo rojo para diferenciarlo
+                    // como la acción más severa, al final de la pantalla.
+                    Column(modifier = Modifier.padding(top = 12.dp, bottom = 20.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(FinTrackRed, RoundedCornerShape(16.dp))
+                                .clickable(enabled = !isDeactivating) { showDeactivateDialog = true }
+                                .padding(vertical = 16.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                        ) {
+                            Text(
+                                text = if (isDeactivating) "Desactivando..." else "Desactivar mi cuenta",
+                                color = androidx.compose.ui.graphics.Color.White,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (deactivateError != null) {
+                            Text(
+                                text = deactivateError.orEmpty(),
+                                color = FinTrackRed,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
                     }
                 }
             }

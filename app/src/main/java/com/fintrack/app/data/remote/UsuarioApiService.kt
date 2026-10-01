@@ -4,6 +4,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.PUT
 
 data class CambiarPasswordRequest(
@@ -35,4 +36,9 @@ interface UsuarioApiService {
         @Header("Authorization") authorization: String,
         @Body request: CambiarPasswordRequest
     ): Response<Unit>
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Sin cuerpo: el
+    // backend responde 204 si la cuenta quedó desactivada.
+    @PATCH("api/v1/usuarios/me/estado")
+    suspend fun desactivarMiCuenta(@Header("Authorization") authorization: String): Response<Unit>
 }
