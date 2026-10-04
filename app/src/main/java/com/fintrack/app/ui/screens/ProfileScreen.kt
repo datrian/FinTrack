@@ -100,6 +100,37 @@ fun ProfileScreen(
 
     // Estado local del switch de notificaciones, inicializado con el valor guardado en el perfil.
     var notificationsEnabled by remember(currentProfile) { mutableStateOf(currentProfile?.budgetNotificationsEnabled ?: false) }
+    var isSavingNotifications by remember { mutableStateOf(false) }
+    var notificationsError by remember { mutableStateOf<String?>(null) }
+
+    val onToggleNotifications: (Boolean) -> Unit = { newValue ->
+        val previousValue = notificationsEnabled
+        notificationsEnabled = newValue
+        scope.launch {
+            isSavingNotifications = true
+            notificationsError = null
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                RetrofitClient.usuarioApi.actualizarMiPerfil(
+                    authorization = "Bearer $token",
+                    request = ActualizarPerfilRequest(notificaciones_presupuesto = newValue)
+                )
+                UserProfileStore.refresh(context)
+            } catch (e: HttpException) {
+                notificationsEnabled = previousValue
+                notificationsError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+            } catch (e: IOException) {
+                notificationsEnabled = previousValue
+                notificationsError = "No se pudo conectar con el servidor. Revisa tu conexión."
+            } catch (e: IllegalStateException) {
+                notificationsEnabled = previousValue
+                notificationsError = "Tu sesión expiró. Vuelve a iniciar sesión."
+            } finally {
+                isSavingNotifications = false
+            }
+        }
+    }
 
     var showEditDialog by remember { mutableStateOf(false) }
     if (showEditDialog && currentProfile != null) {
@@ -254,8 +285,17 @@ fun ProfileScreen(
                             Text(text = "Notificaciones de presupuesto", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                             Switch(
                                 checked = notificationsEnabled,
-                                onCheckedChange = { notificationsEnabled = it },
+                                onCheckedChange = onToggleNotifications,
+                                enabled = !isSavingNotifications,
                                 colors = SwitchDefaults.colors(checkedTrackColor = FinTrackGreen)
+                            )
+                        }
+                        if (notificationsError != null) {
+                            Text(
+                                text = notificationsError.orEmpty(),
+                                color = FinTrackRed,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(bottom = 12.dp)
                             )
                         }
                         androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
