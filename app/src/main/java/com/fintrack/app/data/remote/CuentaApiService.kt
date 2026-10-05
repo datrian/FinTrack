@@ -45,6 +45,10 @@ data class CuentaListaSalida(
     val total: Int
 )
 
+data class CambiarEstadoCuentaRequest(val es_activa_cuenta: Boolean)
+
+data class CuentaEstadoResponse(val id_cuenta: String, val es_activa_cuenta: Boolean)
+
 // Versión completa de una cuenta, tal como la devuelve la creación (POST).
 data class CuentaResponse(
     val id_cuenta: String,
@@ -92,4 +96,14 @@ interface CuentaApiService {
         @Path("id_cuenta") idCuenta: String,
         @Body request: ActualizarCuentaRequest
     ): CuentaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Activa o
+    // desactiva una cuenta; GET /api/v1/cuentas solo devuelve las activas
+    // por defecto, así que desactivar una la saca de ese listado.
+    @PATCH("api/v1/cuentas/{id_cuenta}/estado")
+    suspend fun cambiarEstadoCuenta(
+        @Header("Authorization") authorization: String,
+        @Path("id_cuenta") idCuenta: String,
+        @Body request: CambiarEstadoCuentaRequest
+    ): CuentaEstadoResponse
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,6 +48,7 @@ import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.Account
 import com.fintrack.app.data.model.AccountType
 import com.fintrack.app.data.remote.ActualizarCuentaRequest
+import com.fintrack.app.data.remote.CambiarEstadoCuentaRequest
 import com.fintrack.app.data.remote.CrearCuentaRequest
 import com.fintrack.app.data.remote.CuentaListaItem
 import com.fintrack.app.data.remote.CuentaResponse
@@ -154,6 +156,56 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
         )
     }
 
+    // Cuenta que se está por desactivar (pendiente de confirmación) y cuenta
+    // cuyo PATCH de estado está en curso (para el spinner de esa tarjeta).
+    var accountPendingDeactivation by remember { mutableStateOf<Account?>(null) }
+    var deactivatingAccountId by remember { mutableStateOf<String?>(null) }
+
+    val deactivateAccount: (Account) -> Unit = { account ->
+        accountPendingDeactivation = null
+        scope.launch {
+            deactivatingAccountId = account.id
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                RetrofitClient.cuentaApi.cambiarEstadoCuenta(
+                    authorization = "Bearer $token",
+                    idCuenta = account.id,
+                    request = CambiarEstadoCuentaRequest(es_activa_cuenta = false)
+                )
+                // GET /api/v1/cuentas solo trae cuentas activas por defecto,
+                // así que una vez desactivada ya no pertenece a esta lista.
+                accounts = accounts.filterNot { it.id == account.id }
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", Toast.LENGTH_SHORT).show()
+            } finally {
+                deactivatingAccountId = null
+            }
+        }
+    }
+
+    val accountToConfirmDeactivation = accountPendingDeactivation
+    if (accountToConfirmDeactivation != null) {
+        AlertDialog(
+            onDismissRequest = { accountPendingDeactivation = null },
+            title = { Text("Desactivar cuenta") },
+            text = { Text("\"${accountToConfirmDeactivation.name}\" se desactivará y dejará de aparecer en tu lista de cuentas. ¿Deseas continuar?") },
+            confirmButton = {
+                TextButton(onClick = { deactivateAccount(accountToConfirmDeactivation) }) {
+                    Text(text = "Desactivar", color = FinTrackRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { accountPendingDeactivation = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
     // Bandera que controla si el popup de "nueva cuenta" está visible o no.
     var isAddingAccount by remember { mutableStateOf(false) }
 
@@ -223,7 +275,9 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
                     AccountCard(
                         account = account,
                         isLoadingDetail = loadingAccountId == account.id,
-                        onEditClick = { openEditDialog(account.id) }
+                        isDeactivating = deactivatingAccountId == account.id,
+                        onEditClick = { openEditDialog(account.id) },
+                        onDeactivateClick = { accountPendingDeactivation = account }
                     )
                 }
             }
@@ -247,7 +301,9 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
 private fun AccountCard(
     account: Account,
     isLoadingDetail: Boolean,
+    isDeactivating: Boolean,
     onEditClick: () -> Unit,
+    onDeactivateClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     SectionCard(modifier = modifier) { // SectionCard da el fondo blanco + bordes redondeados reutilizables
@@ -264,11 +320,18 @@ private fun AccountCard(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AccountTypeTag(account.type)
-                IconButton(onClick = onEditClick, enabled = !isLoadingDetail) {
+                IconButton(onClick = onEditClick, enabled = !isLoadingDetail && !isDeactivating) {
                     if (isLoadingDetail) {
                         CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     } else {
                         Icon(imageVector = Icons.Filled.Edit, contentDescription = "Editar cuenta", tint = FinTrackNavy)
+                    }
+                }
+                IconButton(onClick = onDeactivateClick, enabled = !isLoadingDetail && !isDeactivating) {
+                    if (isDeactivating) {
+                        CircularProgressIndicator(color = FinTrackRed, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(imageVector = Icons.Filled.Delete, contentDescription = "Desactivar cuenta", tint = FinTrackRed)
                     }
                 }
             }
