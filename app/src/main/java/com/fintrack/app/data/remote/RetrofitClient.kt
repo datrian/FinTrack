@@ -37,4 +37,13 @@ object RetrofitClient {
             .build()
             .create(UsuarioApiService::class.java)
     }
+
+    val cuentaApi: CuentaApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(CuentaApiService::class.java)
+    }
 }

@@ -7,20 +7,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 // información que se muestra en la app (cuentas, movimientos, presupuestos, etc).
 // Son objetos simples, sin lógica de UI, que las pantallas leen para dibujar.
 
-// Los tipos de cuenta que existen en la app. "label" es el texto que se
-// muestra en pantalla (por ejemplo, en la etiqueta de color de cada cuenta).
+// Los tipos de cuenta que acepta el backend (GET/POST /api/v1/cuentas). Los
+// nombres de las constantes deben coincidir exactamente con los valores que
+// manda/devuelve la API ("EFECTIVO", "DEBITO", etc.); "label" es solo el
+// texto que se muestra en pantalla.
 enum class AccountType(val label: String) {
-    PRINCIPAL("Principal"),
-    INVERSION("Inversión"),
-    CREDITO("Crédito"),
-    EFECTIVO("Efectivo")
+    EFECTIVO("Efectivo"),
+    DEBITO("Débito"),
+    AHORRO("Ahorro"),
+    CREDITO("Crédito")
 }
 
-// Una cuenta bancaria/financiera del usuario (la que se ve en la pantalla de Cuentas).
+// Una cuenta bancaria/financiera del usuario (la que se ve en la pantalla de
+// Cuentas), traída de GET /api/v1/cuentas.
 data class Account(
     val id: String,
     val name: String,
-    val subtitle: String,
+    val institution: String?,
     val type: AccountType,
     val balance: Double
 )

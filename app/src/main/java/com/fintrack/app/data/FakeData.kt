@@ -9,8 +9,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.ui.graphics.Color
-import com.fintrack.app.data.model.Account
-import com.fintrack.app.data.model.AccountType
 import com.fintrack.app.data.model.BudgetCategoryLimit
 import com.fintrack.app.data.model.FuturePrediction
 import com.fintrack.app.data.model.MonthProjection
@@ -37,38 +35,6 @@ object FakeData {
     const val BALANCE_CHANGE_PERCENT = 8.4
     const val MONTHLY_INCOME = 5400.00
     const val MONTHLY_EXPENSES = 2120.00
-
-    // Cuentas de ejemplo que se listan en la pantalla "Mis Cuentas".
-    val accounts = listOf(
-        Account(
-            id = "acc-1",
-            name = "BBVA Nómina",
-            subtitle = "Cuenta Corriente",
-            type = AccountType.PRINCIPAL,
-            balance = 24500.00
-        ),
-        Account(
-            id = "acc-2",
-            name = "Santander Ahorro",
-            subtitle = "Cuenta de Ahorros",
-            type = AccountType.INVERSION,
-            balance = 18200.00
-        ),
-        Account(
-            id = "acc-3",
-            name = "Tarjeta Visa Platinum",
-            subtitle = "Crédito",
-            type = AccountType.CREDITO,
-            balance = -1420.50
-        ),
-        Account(
-            id = "acc-4",
-            name = "Efectivo",
-            subtitle = "Billetera",
-            type = AccountType.EFECTIVO,
-            balance = 4000.00
-        )
-    )
 
     // Movimientos de ejemplo que aparecen en Inicio y en Transacciones.
     val transactions = listOf(
