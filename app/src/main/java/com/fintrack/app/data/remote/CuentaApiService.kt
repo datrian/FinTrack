@@ -4,7 +4,9 @@ import com.fintrack.app.data.model.AccountType
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 data class CrearCuentaRequest(
     val nombre_cuenta: String,
@@ -12,6 +14,16 @@ data class CrearCuentaRequest(
     val saldo_inicial_cuenta: Double,
     val institucion_cuenta: String? = null,
     val numero_cuenta: String? = null,
+    val limite_credito_cuenta: Double? = null
+)
+
+// Actualización parcial (PATCH): el tipo de cuenta no se puede cambiar una
+// vez creada, por eso no aparece aquí.
+data class ActualizarCuentaRequest(
+    val nombre_cuenta: String? = null,
+    val institucion_cuenta: String? = null,
+    val numero_cuenta: String? = null,
+    val saldo_inicial_cuenta: Double? = null,
     val limite_credito_cuenta: Double? = null
 )
 
@@ -60,5 +72,24 @@ interface CuentaApiService {
     suspend fun crearCuenta(
         @Header("Authorization") authorization: String,
         @Body request: CrearCuentaRequest
+    ): CuentaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Devuelve el
+    // detalle completo de una cuenta (incluye saldo inicial, límite de
+    // crédito, etc., que el listado no trae).
+    @GET("api/v1/cuentas/{id_cuenta}")
+    suspend fun obtenerCuenta(
+        @Header("Authorization") authorization: String,
+        @Path("id_cuenta") idCuenta: String
+    ): CuentaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Actualización
+    // parcial, igual que ActualizarPerfilRequest: los campos en null se
+    // omiten del JSON y el backend no los toca.
+    @PATCH("api/v1/cuentas/{id_cuenta}")
+    suspend fun actualizarCuenta(
+        @Header("Authorization") authorization: String,
+        @Path("id_cuenta") idCuenta: String,
+        @Body request: ActualizarCuentaRequest
     ): CuentaResponse
 }

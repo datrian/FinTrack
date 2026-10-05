@@ -1,5 +1,6 @@
 package com.fintrack.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,17 +10,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -42,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.Account
 import com.fintrack.app.data.model.AccountType
+import com.fintrack.app.data.remote.ActualizarCuentaRequest
 import com.fintrack.app.data.remote.CrearCuentaRequest
 import com.fintrack.app.data.remote.CuentaListaItem
 import com.fintrack.app.data.remote.CuentaResponse
@@ -110,6 +115,45 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
 
     LaunchedEffect(Unit) { loadAccounts() }
 
+    // Cuenta cuyo detalle se está trayendo (GET) para abrir su diálogo de
+    // edición; se usa para mostrar un spinner solo en esa tarjeta.
+    var loadingAccountId by remember { mutableStateOf<String?>(null) }
+    // Detalle completo ya traído: mientras no sea null, se muestra el diálogo de edición.
+    var accountToEdit by remember { mutableStateOf<CuentaResponse?>(null) }
+
+    val openEditDialog: (String) -> Unit = { accountId ->
+        scope.launch {
+            loadingAccountId = accountId
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                accountToEdit = RetrofitClient.cuentaApi.obtenerCuenta("Bearer $token", accountId)
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", Toast.LENGTH_SHORT).show()
+            } finally {
+                loadingAccountId = null
+            }
+        }
+    }
+
+    val accountBeingEdited = accountToEdit
+    if (accountBeingEdited != null) {
+        EditAccountDialog(
+            account = accountBeingEdited,
+            onDismiss = { accountToEdit = null },
+            // Se ejecuta cuando el PATCH al backend tuvo éxito.
+            onUpdated = { updatedAccount ->
+                accounts = accounts.map { if (it.id == updatedAccount.id) updatedAccount else it }
+                accountToEdit = null
+            }
+        )
+    }
+
     // Bandera que controla si el popup de "nueva cuenta" está visible o no.
     var isAddingAccount by remember { mutableStateOf(false) }
 
@@ -176,7 +220,11 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
             // Una tarjeta (AccountCard) por cada cuenta en la lista.
             items(accounts) { account ->
                 Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    AccountCard(account)
+                    AccountCard(
+                        account = account,
+                        isLoadingDetail = loadingAccountId == account.id,
+                        onEditClick = { openEditDialog(account.id) }
+                    )
                 }
             }
         }
@@ -194,12 +242,19 @@ fun AccountsScreen(onAddAccount: () -> Unit = {}, onOpenProfile: () -> Unit = {}
 }
 
 // Tarjeta visual de una sola cuenta: nombre, institución, etiqueta de tipo y saldo.
+// El lápiz trae el detalle completo (GET) y abre el diálogo de edición (PATCH).
 @Composable
-private fun AccountCard(account: Account, modifier: Modifier = Modifier) {
+private fun AccountCard(
+    account: Account,
+    isLoadingDetail: Boolean,
+    onEditClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     SectionCard(modifier = modifier) { // SectionCard da el fondo blanco + bordes redondeados reutilizables
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween // nombre a la izquierda, etiqueta de tipo a la derecha
+            horizontalArrangement = Arrangement.SpaceBetween, // nombre a la izquierda, resto a la derecha
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
                 Text(text = account.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -207,7 +262,16 @@ private fun AccountCard(account: Account, modifier: Modifier = Modifier) {
                     Text(text = account.institution, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            AccountTypeTag(account.type)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AccountTypeTag(account.type)
+                IconButton(onClick = onEditClick, enabled = !isLoadingDetail) {
+                    if (isLoadingDetail) {
+                        CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(imageVector = Icons.Filled.Edit, contentDescription = "Editar cuenta", tint = FinTrackNavy)
+                    }
+                }
+            }
         }
         Column(modifier = Modifier.padding(top = 16.dp)) {
             Text(text = "Saldo disponible", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -442,6 +506,138 @@ private fun AddAccountDialog(
         },
         dismissButton = {
             // Cierra el popup sin guardar nada.
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup (AlertDialog) para editar una cuenta existente, precargado con el
+// detalle completo que trajo GET /api/v1/cuentas/{id}. Manda el PATCH al
+// backend él mismo y, si tuvo éxito, le pasa la cuenta actualizada a
+// AccountsScreen mediante "onUpdated". El tipo de cuenta no es editable
+// (el backend no lo permite), por eso no hay chips aquí.
+@Composable
+private fun EditAccountDialog(
+    account: CuentaResponse,
+    onDismiss: () -> Unit,
+    onUpdated: (Account) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf(account.nombre_cuenta) }
+    var institution by remember { mutableStateOf(account.institucion_cuenta.orEmpty()) }
+    var initialBalanceText by remember { mutableStateOf(account.saldo_inicial_cuenta) }
+    var creditLimitText by remember { mutableStateOf(account.limite_credito_cuenta.orEmpty()) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val isCredito = account.tipo_cuenta == AccountType.CREDITO
+    val initialBalance = initialBalanceText.toDoubleOrNull()
+    val creditLimit = creditLimitText.toDoubleOrNull()
+    val isValid = name.isNotBlank() && initialBalance != null && initialBalance >= 0 &&
+        (!isCredito || (creditLimit != null && creditLimit > 0))
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Editar cuenta", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Nombre de la cuenta") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = institution,
+                    onValueChange = { institution = it },
+                    label = { Text("Institución (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = initialBalanceText,
+                    onValueChange = { initialBalanceText = it; errorMessage = null },
+                    label = { Text("Saldo inicial") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                // Solo aplica a cuentas de Crédito (el backend lo exige > 0 en ese caso).
+                if (isCredito) {
+                    OutlinedTextField(
+                        value = creditLimitText,
+                        onValueChange = { creditLimitText = it; errorMessage = null },
+                        label = { Text("Límite de crédito") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val updated = RetrofitClient.cuentaApi.actualizarCuenta(
+                                authorization = "Bearer $token",
+                                idCuenta = account.id_cuenta,
+                                request = ActualizarCuentaRequest(
+                                    nombre_cuenta = name.trim(),
+                                    institucion_cuenta = institution.trim().ifBlank { null },
+                                    saldo_inicial_cuenta = initialBalance,
+                                    limite_credito_cuenta = if (isCredito) creditLimit else null
+                                )
+                            )
+                            onUpdated(updated.toAccount())
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss, enabled = !isSaving) {
                 Text(text = "Cancelar")
             }
