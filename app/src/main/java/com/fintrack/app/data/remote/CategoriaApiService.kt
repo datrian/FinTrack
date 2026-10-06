@@ -3,9 +3,13 @@ package com.fintrack.app.data.remote
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 data class CrearCategoriaRequest(val nombre_categoria: String)
+
+data class RenombrarCategoriaRequest(val nombre_categoria: String)
 
 data class CategoriaResponse(
     val id_categoria: String,
@@ -28,5 +32,21 @@ interface CategoriaApiService {
     suspend fun crearCategoria(
         @Header("Authorization") authorization: String,
         @Body request: CrearCategoriaRequest
+    ): CategoriaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>).
+    @GET("api/v1/categorias/{id_categoria}")
+    suspend fun obtenerCategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_categoria") idCategoria: String
+    ): CategoriaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Renombra la
+    // categoría; es el único campo editable (2-100 caracteres).
+    @PATCH("api/v1/categorias/{id_categoria}")
+    suspend fun renombrarCategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_categoria") idCategoria: String,
+        @Body request: RenombrarCategoriaRequest
     ): CategoriaResponse
 }

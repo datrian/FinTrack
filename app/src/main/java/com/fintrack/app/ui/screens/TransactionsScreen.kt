@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,6 +50,7 @@ import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionDirection
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearCategoriaRequest
+import com.fintrack.app.data.remote.RenombrarCategoriaRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
@@ -115,6 +117,45 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
             onCreated = { newCategory ->
                 categories = categories + newCategory
                 isAddingCategory = false
+            }
+        )
+    }
+
+    // Categoría cuyo detalle se está trayendo (GET) para abrir el diálogo de
+    // renombrar; se usa para mostrar un spinner solo en ese chip.
+    var loadingCategoryId by remember { mutableStateOf<String?>(null) }
+    // Detalle ya traído: mientras no sea null, se muestra el diálogo de renombrar.
+    var categoryToRename by remember { mutableStateOf<CategoriaResponse?>(null) }
+
+    val openRenameDialog: (String) -> Unit = { categoryId ->
+        scope.launch {
+            loadingCategoryId = categoryId
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                categoryToRename = RetrofitClient.categoriaApi.obtenerCategoria("Bearer $token", categoryId)
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                android.widget.Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                android.widget.Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                loadingCategoryId = null
+            }
+        }
+    }
+
+    val categoryBeingRenamed = categoryToRename
+    if (categoryBeingRenamed != null) {
+        RenameCategoryDialog(
+            category = categoryBeingRenamed,
+            onDismiss = { categoryToRename = null },
+            // Se ejecuta cuando el PATCH al backend tuvo éxito.
+            onRenamed = { renamedCategory ->
+                categories = categories.map { if (it.id == renamedCategory.id) renamedCategory else it }
+                categoryToRename = null
             }
         )
     }
@@ -200,7 +241,11 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             categories.forEach { category ->
-                                CategoryChip(name = category.name)
+                                CategoryChip(
+                                    name = category.name,
+                                    isLoading = loadingCategoryId == category.id,
+                                    onClick = { openRenameDialog(category.id) }
+                                )
                             }
                         }
                     }
@@ -241,21 +286,44 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// Pastilla con el nombre de una categoría del usuario.
+// Pastilla con el nombre de una categoría del usuario. Tocarla trae el
+// detalle (GET) y abre el diálogo para renombrarla (PATCH).
 @Composable
-private fun CategoryChip(name: String, modifier: Modifier = Modifier) {
+private fun CategoryChip(name: String, isLoading: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         color = FinTrackNavy.copy(alpha = 0.1f),
         shape = RoundedCornerShape(8.dp),
-        modifier = modifier
+        modifier = modifier.clickable(enabled = !isLoading) { onClick() }
     ) {
-        Text(
-            text = name,
-            color = FinTrackNavy,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-        )
+        ) {
+            Text(
+                text = name,
+                color = FinTrackNavy,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = FinTrackNavy,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .size(12.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "Editar categoría",
+                    tint = FinTrackNavy,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .size(14.dp)
+                )
+            }
+        }
     }
 }
 
@@ -360,6 +428,89 @@ private fun AddCategoryDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
             ) {
                 Text(text = if (isSaving) "Guardando..." else "Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para renombrar una categoría existente, precargado con el nombre
+// que trajo GET /api/v1/categorias/{id}. Manda el PATCH al backend él mismo
+// y, si tuvo éxito, le pasa la categoría actualizada a TransactionsScreen.
+@Composable
+private fun RenameCategoryDialog(
+    category: CategoriaResponse,
+    onDismiss: () -> Unit,
+    onRenamed: (TransactionCategory) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf(category.nombre_categoria) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val isValid = name.trim().length in 2..100
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Renombrar categoría", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Nombre de la categoría") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val renamed = RetrofitClient.categoriaApi.renombrarCategoria(
+                                authorization = "Bearer $token",
+                                idCategoria = category.id_categoria,
+                                request = RenombrarCategoriaRequest(nombre_categoria = name.trim())
+                            )
+                            onRenamed(renamed.toTransactionCategory())
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
             }
         },
         dismissButton = {
