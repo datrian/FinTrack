@@ -3,7 +3,6 @@ package com.fintrack.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +13,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -48,12 +49,14 @@ import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.Transaction
 import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionDirection
+import com.fintrack.app.data.remote.CambiarEstadoCategoriaRequest
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearCategoriaRequest
 import com.fintrack.app.data.remote.RenombrarCategoriaRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
+import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.components.amountColor
 import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.theme.FinTrackNavy
@@ -160,6 +163,56 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
         )
     }
 
+    // Categoría que se está por desactivar (pendiente de confirmación) y
+    // categoría cuyo PATCH de estado está en curso (para el spinner de ese chip).
+    var categoryPendingDeactivation by remember { mutableStateOf<TransactionCategory?>(null) }
+    var deactivatingCategoryId by remember { mutableStateOf<String?>(null) }
+
+    val deactivateCategory: (TransactionCategory) -> Unit = { category ->
+        categoryPendingDeactivation = null
+        scope.launch {
+            deactivatingCategoryId = category.id
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                RetrofitClient.categoriaApi.cambiarEstadoCategoria(
+                    authorization = "Bearer $token",
+                    idCategoria = category.id,
+                    request = CambiarEstadoCategoriaRequest(es_activa_categoria = false)
+                )
+                // GET /api/v1/categorias solo trae categorías activas por
+                // defecto, así que una vez desactivada ya no pertenece a esta lista.
+                categories = categories.filterNot { it.id == category.id }
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                android.widget.Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                android.widget.Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                deactivatingCategoryId = null
+            }
+        }
+    }
+
+    val categoryToConfirmDeactivation = categoryPendingDeactivation
+    if (categoryToConfirmDeactivation != null) {
+        AlertDialog(
+            onDismissRequest = { categoryPendingDeactivation = null },
+            title = { Text("Desactivar categoría") },
+            text = { Text("\"${categoryToConfirmDeactivation.name}\" se desactivará y dejará de aparecer en tu lista de categorías. ¿Deseas continuar?") },
+            confirmButton = {
+                TextButton(onClick = { deactivateCategory(categoryToConfirmDeactivation) }) {
+                    Text(text = "Desactivar", color = FinTrackRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { categoryPendingDeactivation = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
     // Se recalcula en cada recomposición según el filtro elegido (no se guarda
     // una copia filtrada por separado, se deriva directo de los datos).
     val filtered = when (selectedFilter) {
@@ -236,16 +289,20 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                         )
                     }
                     else -> {
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            categories.forEach { category ->
-                                CategoryChip(
-                                    name = category.name,
+                        // Mismo contorno compartido (SectionCard + divisores) que usan
+                        // las categorías de ejemplo en Administrar Categorías.
+                        SectionCard {
+                            categories.forEachIndexed { index, category ->
+                                CategoryListRow(
+                                    category = category,
                                     isLoading = loadingCategoryId == category.id,
-                                    onClick = { openRenameDialog(category.id) }
+                                    isDeactivating = deactivatingCategoryId == category.id,
+                                    onEditClick = { openRenameDialog(category.id) },
+                                    onDeactivateClick = { categoryPendingDeactivation = category }
                                 )
+                                if (index != categories.lastIndex) {
+                                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                                }
                             }
                         }
                     }
@@ -286,42 +343,55 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// Pastilla con el nombre de una categoría del usuario. Tocarla trae el
-// detalle (GET) y abre el diálogo para renombrarla (PATCH).
+// Una fila de categoría real del usuario: ícono circular + nombre, y los
+// botones de editar (lápiz, trae el GET y abre el diálogo de renombrar) y
+// desactivar (bote de basura). Mismo diseño que las categorías de ejemplo en
+// Administrar Categorías (CategoryRow de CategoriesScreen.kt): ícono circular
+// a la izquierda, dentro de un SectionCard compartido con divisores.
 @Composable
-private fun CategoryChip(name: String, isLoading: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        color = FinTrackNavy.copy(alpha = 0.1f),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier.clickable(enabled = !isLoading) { onClick() }
+private fun CategoryListRow(
+    category: TransactionCategory,
+    isLoading: Boolean,
+    isDeactivating: Boolean,
+    onEditClick: () -> Unit,
+    onDeactivateClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(FinTrackNavy.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = name,
-                color = FinTrackNavy,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold
-            )
+            Icon(imageVector = Icons.Filled.Category, contentDescription = null, tint = FinTrackNavy)
+        }
+        Text(
+            text = category.name,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .weight(1f)
+        )
+        IconButton(onClick = onEditClick, enabled = !isLoading && !isDeactivating) {
             if (isLoading) {
-                CircularProgressIndicator(
-                    color = FinTrackNavy,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .size(12.dp)
-                )
+                CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
             } else {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = "Editar categoría",
-                    tint = FinTrackNavy,
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .size(14.dp)
-                )
+                Icon(imageVector = Icons.Filled.Edit, contentDescription = "Editar categoría", tint = FinTrackNavy)
+            }
+        }
+        IconButton(onClick = onDeactivateClick, enabled = !isLoading && !isDeactivating) {
+            if (isDeactivating) {
+                CircularProgressIndicator(color = FinTrackRed, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(imageVector = Icons.Filled.Delete, contentDescription = "Desactivar categoría", tint = FinTrackRed)
             }
         }
     }
