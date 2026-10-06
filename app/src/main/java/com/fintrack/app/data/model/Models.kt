@@ -73,6 +73,14 @@ data class FuturePrediction(
     val confidence: String
 )
 
+// Una categoría real del usuario, traída de GET /api/v1/categorias. El backend
+// solo guarda nombre y estado: no tiene íconos ni colores (a diferencia de
+// SpendingCategory, que es el modelo de ejemplo de la pantalla de Categorías).
+data class TransactionCategory(
+    val id: String,
+    val name: String
+)
+
 // Una categoría de gasto (ej. "Comida"), con su ícono y cuántas subcategorías tiene.
 data class SpendingCategory(
     val id: String,
