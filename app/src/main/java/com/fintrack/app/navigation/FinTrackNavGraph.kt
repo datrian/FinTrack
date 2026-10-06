@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -194,7 +195,17 @@ private fun FinTrackBottomBar(navController: NavHostController) {
                     selected = selected,
                     onClick = { navController.navigateSingleTop(item.route) },
                     icon = { androidx.compose.material3.Icon(imageVector = item.icon, contentDescription = item.label) },
-                    label = { Text(text = item.label) },
+                    label = {
+                        Text(
+                            text = item.label,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Visible,
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp
+                            )
+                        )
+                    },
                     colors = NavigationBarItemDefaultsColors()
                 )
             }
