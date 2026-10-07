@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
 // que es quien decide qué pantalla mostrar en cada momento.
 @Composable
 private fun FinTrackRoot() {
-    FinTrackTheme {
+    FinTrackTheme {3
         // Surface pinta el fondo con el color del tema y ocupa toda la pantalla.
         Surface(modifier = Modifier.fillMaxSize()) {
             FinTrackApp()

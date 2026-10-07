@@ -28,6 +28,8 @@ data class CategoriaEstadoResponse(val id_categoria: String, val es_activa_categ
 
 data class CrearSubcategoriaRequest(val nombre_subcategoria: String)
 
+data class RenombrarSubcategoriaRequest(val nombre_subcategoria: String)
+
 data class SubcategoriaResponse(
     val id_subcategoria: String,
     val categoria_id: String,
@@ -39,6 +41,10 @@ data class SubcategoriaListaSalida(
     val subcategorias: List<SubcategoriaResponse>,
     val total: Int
 )
+
+data class CambiarEstadoSubcategoriaRequest(val es_activa_subcategoria: Boolean)
+
+data class SubcategoriaEstadoResponse(val id_subcategoria: String, val es_activa_subcategoria: Boolean)
 
 interface CategoriaApiService {
     // Requiere sesión activa (Authorization: Bearer <token>). Sin parámetros,
@@ -92,4 +98,32 @@ interface CategoriaApiService {
         @Path("id_categoria") idCategoria: String,
         @Body request: CrearSubcategoriaRequest
     ): SubcategoriaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Nota: a
+    // diferencia de las categorías, las subcategorías viven en su propia
+    // ruta de nivel superior (/api/v1/subcategorias/{id}), no anidada bajo
+    // /categorias/{id}.
+    @GET("api/v1/subcategorias/{id_subcategoria}")
+    suspend fun obtenerSubcategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_subcategoria") idSubcategoria: String
+    ): SubcategoriaResponse
+
+    // Renombra la subcategoría; es el único campo editable (2-100 caracteres).
+    @PATCH("api/v1/subcategorias/{id_subcategoria}")
+    suspend fun renombrarSubcategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_subcategoria") idSubcategoria: String,
+        @Body request: RenombrarSubcategoriaRequest
+    ): SubcategoriaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Activa o
+    // desactiva una subcategoría; GET .../subcategorias solo devuelve las
+    // activas por defecto, así que desactivarla la saca de ese listado.
+    @PATCH("api/v1/subcategorias/{id_subcategoria}/estado")
+    suspend fun cambiarEstadoSubcategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_subcategoria") idSubcategoria: String,
+        @Body request: CambiarEstadoSubcategoriaRequest
+    ): SubcategoriaEstadoResponse
 }

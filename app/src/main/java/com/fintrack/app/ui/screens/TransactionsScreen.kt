@@ -53,10 +53,12 @@ import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionDirection
 import com.fintrack.app.data.model.TransactionSubcategory
 import com.fintrack.app.data.remote.CambiarEstadoCategoriaRequest
+import com.fintrack.app.data.remote.CambiarEstadoSubcategoriaRequest
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearCategoriaRequest
 import com.fintrack.app.data.remote.CrearSubcategoriaRequest
 import com.fintrack.app.data.remote.RenombrarCategoriaRequest
+import com.fintrack.app.data.remote.RenombrarSubcategoriaRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.SubcategoriaResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
@@ -282,6 +284,100 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
         )
     }
 
+    // Subcategoría cuyo detalle se está trayendo (GET) para abrir el diálogo
+    // de renombrar, y detalle ya traído (el diálogo se muestra mientras no sea null).
+    var loadingSubcategoryId by remember { mutableStateOf<String?>(null) }
+    var subcategoryToRename by remember { mutableStateOf<SubcategoriaResponse?>(null) }
+
+    val openRenameSubcategoryDialog: (String) -> Unit = { subcategoryId ->
+        scope.launch {
+            loadingSubcategoryId = subcategoryId
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                subcategoryToRename = RetrofitClient.categoriaApi.obtenerSubcategoria("Bearer $token", subcategoryId)
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                android.widget.Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                android.widget.Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                loadingSubcategoryId = null
+            }
+        }
+    }
+
+    val subcategoryBeingRenamed = subcategoryToRename
+    if (subcategoryBeingRenamed != null) {
+        RenameSubcategoryDialog(
+            subcategory = subcategoryBeingRenamed,
+            onDismiss = { subcategoryToRename = null },
+            // Se ejecuta cuando el PATCH al backend tuvo éxito.
+            onRenamed = { renamedSubcategory ->
+                val existing = subcategoriesByCategory[renamedSubcategory.categoryId].orEmpty()
+                subcategoriesByCategory = subcategoriesByCategory + (
+                    renamedSubcategory.categoryId to existing.map { if (it.id == renamedSubcategory.id) renamedSubcategory else it }
+                )
+                subcategoryToRename = null
+            }
+        )
+    }
+
+    // Subcategoría que se está por desactivar (pendiente de confirmación) y
+    // subcategoría cuyo PATCH de estado está en curso (spinner en esa fila).
+    var subcategoryPendingDeactivation by remember { mutableStateOf<TransactionSubcategory?>(null) }
+    var deactivatingSubcategoryId by remember { mutableStateOf<String?>(null) }
+
+    val deactivateSubcategory: (TransactionSubcategory) -> Unit = { subcategory ->
+        subcategoryPendingDeactivation = null
+        scope.launch {
+            deactivatingSubcategoryId = subcategory.id
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                RetrofitClient.categoriaApi.cambiarEstadoSubcategoria(
+                    authorization = "Bearer $token",
+                    idSubcategoria = subcategory.id,
+                    request = CambiarEstadoSubcategoriaRequest(es_activa_subcategoria = false)
+                )
+                // GET .../subcategorias solo trae las activas por defecto,
+                // así que una vez desactivada ya no pertenece a esta lista.
+                val existing = subcategoriesByCategory[subcategory.categoryId].orEmpty()
+                subcategoriesByCategory = subcategoriesByCategory + (
+                    subcategory.categoryId to existing.filterNot { it.id == subcategory.id }
+                )
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                android.widget.Toast.makeText(context, "No se pudo conectar con el servidor. Revisa tu conexión.", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
+                android.widget.Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                deactivatingSubcategoryId = null
+            }
+        }
+    }
+
+    val subcategoryToConfirmDeactivation = subcategoryPendingDeactivation
+    if (subcategoryToConfirmDeactivation != null) {
+        AlertDialog(
+            onDismissRequest = { subcategoryPendingDeactivation = null },
+            title = { Text("Desactivar subcategoría") },
+            text = { Text("\"${subcategoryToConfirmDeactivation.name}\" se desactivará y dejará de aparecer en la lista. ¿Deseas continuar?") },
+            confirmButton = {
+                TextButton(onClick = { deactivateSubcategory(subcategoryToConfirmDeactivation) }) {
+                    Text(text = "Desactivar", color = FinTrackRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { subcategoryPendingDeactivation = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
     // Se recalcula en cada recomposición según el filtro elegido (no se guarda
     // una copia filtrada por separado, se deriva directo de los datos).
     val filtered = when (selectedFilter) {
@@ -376,8 +472,12 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                                         subcategories = subcategoriesByCategory[category.id],
                                         isLoading = loadingSubcategoriesFor == category.id,
                                         error = subcategoriesErrorByCategory[category.id],
+                                        loadingSubcategoryId = loadingSubcategoryId,
+                                        deactivatingSubcategoryId = deactivatingSubcategoryId,
                                         onRetry = { loadSubcategories(category.id) },
-                                        onAddClick = { categoryForNewSubcategory = category }
+                                        onAddClick = { categoryForNewSubcategory = category },
+                                        onSubcategoryEditClick = { subcategoryId -> openRenameSubcategoryDialog(subcategoryId) },
+                                        onSubcategoryDeactivateClick = { subcategory -> subcategoryPendingDeactivation = subcategory }
                                     )
                                 }
                                 if (index != categories.lastIndex) {
@@ -493,14 +593,20 @@ private fun CategoryListRow(
 }
 
 // Panel expandible debajo de una categoría: lista sus subcategorías reales
-// (GET /api/v1/categorias/{id}/subcategorias) y permite agregar una nueva (POST).
+// (GET /api/v1/categorias/{id}/subcategorias), permite agregar una nueva
+// (POST) y renombrar cada una (lápiz: trae el detalle con GET
+// /api/v1/subcategorias/{id} y abre el diálogo de renombrar con PATCH).
 @Composable
 private fun SubcategoriesPanel(
     subcategories: List<TransactionSubcategory>?,
     isLoading: Boolean,
     error: String?,
+    loadingSubcategoryId: String?,
+    deactivatingSubcategoryId: String?,
     onRetry: () -> Unit,
     onAddClick: () -> Unit,
+    onSubcategoryEditClick: (String) -> Unit,
+    onSubcategoryDeactivateClick: (TransactionSubcategory) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -539,12 +645,51 @@ private fun SubcategoriesPanel(
             }
             else -> {
                 subcategories.forEach { subcategory ->
-                    Text(
-                        text = subcategory.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                    val isLoadingThis = loadingSubcategoryId == subcategory.id
+                    val isDeactivatingThis = deactivatingSubcategoryId == subcategory.id
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = subcategory.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { onSubcategoryEditClick(subcategory.id) },
+                            enabled = !isLoadingThis && !isDeactivatingThis,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            if (isLoadingThis) {
+                                CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Editar subcategoría",
+                                    tint = FinTrackNavy,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { onSubcategoryDeactivateClick(subcategory) },
+                            enabled = !isLoadingThis && !isDeactivatingThis,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            if (isDeactivatingThis) {
+                                CircularProgressIndicator(color = FinTrackRed, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = "Desactivar subcategoría",
+                                    tint = FinTrackRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -752,6 +897,89 @@ private fun AddSubcategoryDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
             ) {
                 Text(text = if (isSaving) "Guardando..." else "Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para renombrar una subcategoría existente, precargado con el nombre
+// que trajo GET /api/v1/subcategorias/{id}. Manda el PATCH al backend él
+// mismo y, si tuvo éxito, le pasa la subcategoría actualizada a TransactionsScreen.
+@Composable
+private fun RenameSubcategoryDialog(
+    subcategory: SubcategoriaResponse,
+    onDismiss: () -> Unit,
+    onRenamed: (TransactionSubcategory) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf(subcategory.nombre_subcategoria) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val isValid = name.trim().length in 2..100
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Renombrar subcategoría", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Nombre de la subcategoría") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val renamed = RetrofitClient.categoriaApi.renombrarSubcategoria(
+                                authorization = "Bearer $token",
+                                idSubcategoria = subcategory.id_subcategoria,
+                                request = RenombrarSubcategoriaRequest(nombre_subcategoria = name.trim())
+                            )
+                            onRenamed(renamed.toTransactionSubcategory())
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
             }
         },
         dismissButton = {
