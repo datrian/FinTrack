@@ -74,8 +74,8 @@ data class FuturePrediction(
 )
 
 // Una categoría real del usuario, traída de GET /api/v1/categorias. El backend
-// solo guarda nombre y estado: no tiene íconos ni colores (a diferencia de
-// SpendingCategory, que es el modelo de ejemplo de la pantalla de Categorías).
+// solo guarda nombre y estado (sin íconos ni colores); la UI le asigna un
+// ícono genérico.
 data class TransactionCategory(
     val id: String,
     val name: String
@@ -87,23 +87,6 @@ data class TransactionSubcategory(
     val id: String,
     val categoryId: String,
     val name: String
-)
-
-// Una categoría de gasto (ej. "Comida"), con su ícono y cuántas subcategorías tiene.
-data class SpendingCategory(
-    val id: String,
-    val name: String,
-    val subcategoryCount: Int,
-    val icon: ImageVector,
-    val iconBackground: Color,
-    val iconTint: Color
-)
-
-// Una subcategoría dentro de una categoría (ej. "Restaurantes" dentro de "Comida").
-data class Subcategory(
-    val id: String,
-    val name: String,
-    val limitLabel: String
 )
 
 // Datos del usuario que se muestran/editan en la pantalla de Perfil, traídos

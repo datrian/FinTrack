@@ -300,8 +300,6 @@ fun ProfileScreen(
                         }
                         androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                         NavigationRowItem(title = "Administrar Categorías", onClick = onNavigateToCategories)
-                        androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                        NavigationRowItem(title = "Administrar Subcategorías", onClick = onNavigateToCategories)
                     }
 
                     // Botón "Cambiar contraseña" con borde azul, arriba de cerrar sesión.

@@ -4,16 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.ui.graphics.Color
 import com.fintrack.app.data.model.BudgetCategoryLimit
 import com.fintrack.app.data.model.FuturePrediction
 import com.fintrack.app.data.model.MonthProjection
-import com.fintrack.app.data.model.SpendingCategory
-import com.fintrack.app.data.model.Subcategory
 import com.fintrack.app.data.model.Transaction
 import com.fintrack.app.data.model.TransactionDirection
 import com.fintrack.app.ui.theme.FinTrackGreen
@@ -21,7 +17,6 @@ import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackOrange
 import com.fintrack.app.ui.theme.FinTrackPurple
 import com.fintrack.app.ui.theme.FinTrackRed
-import com.fintrack.app.ui.theme.FinTrackTeal
 
 /**
  * Sample / preview data mirroring the values shown in the FinTrack Figma design.
@@ -119,62 +114,6 @@ object FakeData {
         FuturePrediction("Noviembre (Próximo)", 2240.00, "Alta confianza"),
         FuturePrediction("Diciembre", 2610.00, "Confianza Media"),
         FuturePrediction("Enero", 2080.00, "Confianza Media")
-    )
-
-    // Categorías de gasto que se listan en la pantalla de Categorías.
-    val categories = listOf(
-        SpendingCategory(
-            id = "cat-1",
-            name = "Alimentos y Bebidas",
-            subcategoryCount = 12,
-            icon = Icons.Filled.ShoppingCart,
-            iconBackground = FinTrackNavy.copy(alpha = 0.1f),
-            iconTint = FinTrackNavy
-        ),
-        SpendingCategory(
-            id = "cat-2",
-            name = "Transporte público y taxi",
-            subcategoryCount = 4,
-            icon = Icons.Filled.DirectionsCar,
-            iconBackground = FinTrackGreen.copy(alpha = 0.15f),
-            iconTint = FinTrackGreen
-        ),
-        SpendingCategory(
-            id = "cat-3",
-            name = "Entretenimiento y ocio",
-            subcategoryCount = 8,
-            icon = Icons.Filled.Tv,
-            iconBackground = FinTrackRed.copy(alpha = 0.12f),
-            iconTint = FinTrackRed
-        ),
-        SpendingCategory(
-            id = "cat-4",
-            name = "Servicios domésticos",
-            subcategoryCount = 6,
-            icon = Icons.Filled.Home,
-            iconBackground = FinTrackPurple.copy(alpha = 0.12f),
-            iconTint = FinTrackPurple
-        ),
-        SpendingCategory(
-            id = "cat-5",
-            name = "Salud y Bienestar",
-            subcategoryCount = 5,
-            icon = Icons.Filled.Favorite,
-            iconBackground = FinTrackTeal.copy(alpha = 0.15f),
-            iconTint = FinTrackTeal
-        )
-    )
-
-    // Subcategorías agrupadas por id de categoría (por eso es un Map).
-    // Solo "cat-1" tiene datos de ejemplo cargados.
-    val subcategoriesByCategory: Map<String, List<Subcategory>> = mapOf(
-        "cat-1" to listOf(
-            Subcategory("sub-1", "Restaurantes y cafeterías", "Sin límite"),
-            Subcategory("sub-2", "Supermercados", "Límite: \$800.00"),
-            Subcategory("sub-3", "Comida rápida y snacks", "Sin límite"),
-            Subcategory("sub-4", "Delivery de alimentos", "Límite: \$200.00"),
-            Subcategory("sub-5", "Bebidas y licores", "Sin límite")
-        )
     )
 
     // Credenciales del usuario de ejemplo (Carlos Mendoza), usadas como atajo de

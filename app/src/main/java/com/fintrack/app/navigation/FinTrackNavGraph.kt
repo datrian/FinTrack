@@ -14,8 +14,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import androidx.navigation.NavHostController
 import com.fintrack.app.ui.screens.AccountsScreen
 import com.fintrack.app.ui.screens.AuthWelcomeScreen
@@ -27,7 +25,6 @@ import com.fintrack.app.ui.screens.HomeScreen
 import com.fintrack.app.ui.screens.LoginScreen
 import com.fintrack.app.ui.screens.PredictionScreen
 import com.fintrack.app.ui.screens.ProfileScreen
-import com.fintrack.app.ui.screens.SubcategoriesScreen
 import com.fintrack.app.ui.screens.TransactionsScreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 
@@ -98,27 +95,10 @@ fun FinTrackApp() {
             composableRoute(FinTrackDestination.Budget.route) { BudgetScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Prediction.route) { PredictionScreen(onOpenProfile = openProfile) }
 
-            // Pantalla de categorías: al tocar una categoría navega a sus subcategorías,
-            // pasándole el id de la categoría como parámetro de la ruta.
+            // Pantalla de categorías: categorías y subcategorías reales del
+            // usuario (ver/crear/renombrar/desactivar), conectada al backend.
             composableRoute(FinTrackDestination.Categories.route) {
-                CategoriesScreen(
-                    onBack = { navController.popBackStack() },
-                    onCategoryClick = { categoryId ->
-                        navController.navigate(FinTrackDestination.Subcategories.createRoute(categoryId)) {
-                            launchSingleTop = true
-                        }
-                    }
-                )
-            }
-            // Ruta con parámetro: se declara con "composable" (no con el helper
-            // composableRoute) porque necesita describir el argumento "categoryId"
-            // y leerlo de vuelta desde el backStackEntry.
-            composable(
-                route = FinTrackDestination.Subcategories.route,
-                arguments = listOf(navArgument("categoryId") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
-                SubcategoriesScreen(categoryId = categoryId, onBack = { navController.popBackStack() })
+                CategoriesScreen(onBack = { navController.popBackStack() })
             }
             composableRoute(FinTrackDestination.Profile.route) {
                 ProfileScreen(
