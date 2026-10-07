@@ -58,6 +58,7 @@ import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearPresupuestoRequest
 import com.fintrack.app.data.remote.DetallePresupuestoCrearRequest
+import com.fintrack.app.data.remote.DetallePresupuestoSalidaResponse
 import com.fintrack.app.data.remote.PresupuestoResumenResponse
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
@@ -176,6 +177,18 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
 
     LaunchedEffect(Unit) { loadCategories() }
 
+    // Id del presupuesto cuyo detalle se está viendo (tap sobre una
+    // tarjeta). El diálogo pide el detalle con GET /api/v1/presupuestos/{id}
+    // (no reutiliza los datos ya cargados en la lista), que incluye el
+    // desglose por categoría.
+    var selectedBudgetId by remember { mutableStateOf<String?>(null) }
+    selectedBudgetId?.let { budgetId ->
+        BudgetDetailDialog(
+            budgetId = budgetId,
+            onDismiss = { selectedBudgetId = null }
+        )
+    }
+
     var isAddingBudget by remember { mutableStateOf(false) }
     if (isAddingBudget) {
         AddBudgetDialog(
@@ -269,7 +282,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
             else -> {
                 items(budgets) { budget ->
                     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                        BudgetCard(budget)
+                        BudgetCard(budget, onClick = { selectedBudgetId = budget.id })
                     }
                 }
             }
@@ -337,9 +350,9 @@ private fun BudgetFilterChip(label: String, selected: Boolean, onClick: () -> Un
 // Tarjeta de un presupuesto: período + estado, barra de progreso (consumido
 // sobre límite) y montos. En rojo si está excedido o si el período ya venció.
 @Composable
-private fun BudgetCard(budget: AppBudget, modifier: Modifier = Modifier) {
+private fun BudgetCard(budget: AppBudget, onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
     val isExceeded = budget.exceededAmount > 0
-    SectionCard(modifier = modifier) {
+    SectionCard(modifier = modifier.clickable(onClick = onClick)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -397,6 +410,153 @@ private fun BudgetCard(budget: AppBudget, modifier: Modifier = Modifier) {
                 color = FinTrackRed,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+// Popup de detalle de un presupuesto. Pide el registro completo con
+// GET /api/v1/presupuestos/{id} (no reutiliza los datos ya cargados en la
+// lista), que incluye el desglose de consumo por cada categoría asignada.
+@Composable
+private fun BudgetDetailDialog(budgetId: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var budget by remember { mutableStateOf<AppBudget?>(null) }
+    var consumidoPresupuestado by remember { mutableStateOf<Double?>(null) }
+    var consumidoNoPresupuestado by remember { mutableStateOf<Double?>(null) }
+    var detalles by remember { mutableStateOf<List<DetallePresupuestoSalidaResponse>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(budgetId) {
+        scope.launch {
+            isLoading = true
+            loadError = null
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                val response = RetrofitClient.presupuestoApi.obtenerPresupuesto("Bearer $token", budgetId)
+                budget = response.presupuesto.toAppBudget()
+                consumidoPresupuestado = response.monto_consumido_presupuestado.toDoubleOrNull()
+                consumidoNoPresupuestado = response.monto_consumido_no_presupuestado.toDoubleOrNull()
+                detalles = response.detalles
+            } catch (e: HttpException) {
+                loadError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+            } catch (e: IOException) {
+                loadError = "No se pudo conectar con el servidor. Revisa tu conexión."
+            } catch (e: IllegalStateException) {
+                loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Detalle del presupuesto", fontWeight = FontWeight.Bold) },
+        text = {
+            when {
+                isLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator(color = FinTrackNavy) }
+                loadError != null -> Text(text = loadError.orEmpty(), color = FinTrackRed)
+                budget != null -> {
+                    val current = budget!!
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        BudgetDetailRow("Período", "${formatShortDate(current.startDate)} – ${formatShortDate(current.endDate)}")
+                        BudgetDetailRow("Estado", when (current.state) {
+                            EstadoPresupuesto.ACTIVO -> "Activo"
+                            EstadoPresupuesto.FINALIZADO -> "Finalizado"
+                            EstadoPresupuesto.CANCELADO -> "Cancelado"
+                        })
+                        BudgetDetailRow("Indicador", current.indicator)
+                        BudgetDetailRow("Límite", formatCurrency(current.limitAmount))
+                        BudgetDetailRow("Consumido", formatCurrency(current.consumedAmount))
+                        consumidoPresupuestado?.let { BudgetDetailRow("  En categorías presupuestadas", formatCurrency(it)) }
+                        consumidoNoPresupuestado?.let { BudgetDetailRow("  Fuera de presupuesto", formatCurrency(it)) }
+                        if (current.exceededAmount > 0) {
+                            BudgetDetailRow("Excedido", formatCurrency(current.exceededAmount), valueColor = FinTrackRed)
+                        } else {
+                            BudgetDetailRow("Restante", formatCurrency(current.remainingAmount))
+                        }
+                        BudgetDetailRow("Avance", "${current.consumedPercent.toInt()}%")
+                        if (current.isOverdue) {
+                            BudgetDetailRow("Período vencido", "Sí", valueColor = FinTrackRed)
+                        }
+
+                        if (detalles.isNotEmpty()) {
+                            Text(
+                                text = "Desglose por categoría",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                            )
+                            detalles.forEach { detalle ->
+                                BudgetDetailCategoryRow(detalle)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(text = "Cerrar") }
+        }
+    )
+}
+
+@Composable
+private fun BudgetDetailRow(
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Text(text = value, color = valueColor, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+// Una fila del desglose por categoría: nombre + % asignado, barra de
+// progreso de esa categoría, y monto consumido/límite.
+@Composable
+private fun BudgetDetailCategoryRow(detalle: DetallePresupuestoSalidaResponse, modifier: Modifier = Modifier) {
+    val limite = detalle.monto_limite_categoria.toDoubleOrNull() ?: 0.0
+    val consumido = detalle.monto_consumido_categoria.toDoubleOrNull() ?: 0.0
+    val excedido = detalle.monto_excedido_categoria.toDoubleOrNull() ?: 0.0
+    val isExceeded = excedido > 0
+    Column(modifier = modifier.padding(vertical = 8.dp)) {
+        LabeledProgressBar(
+            label = "${detalle.nombre_categoria} (${detalle.porcentaje_asignado_presupuesto}%)",
+            valueText = "${detalle.porcentaje_consumido_categoria.toDoubleOrNull()?.toInt() ?: 0}%",
+            progress = if (limite > 0) (consumido / limite).toFloat() else 0f,
+            progressColor = if (isExceeded) FinTrackRed else FinTrackNavy
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "${formatCurrency(consumido)} de ${formatCurrency(limite)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = detalle.indicador_categoria,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isExceeded) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

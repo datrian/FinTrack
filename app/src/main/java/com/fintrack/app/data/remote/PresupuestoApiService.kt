@@ -5,6 +5,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 // "porcentaje_alerta_presupuesto" se queda en su valor por defecto (80): el
@@ -87,5 +88,11 @@ interface PresupuestoApiService {
     suspend fun crearPresupuesto(
         @Header("Authorization") authorization: String,
         @Body request: CrearPresupuestoRequest
+    ): PresupuestoDetalleResponse
+
+    @GET("api/v1/presupuestos/{id_presupuesto}")
+    suspend fun obtenerPresupuesto(
+        @Header("Authorization") authorization: String,
+        @Path("id_presupuesto") idPresupuesto: String
     ): PresupuestoDetalleResponse
 }
