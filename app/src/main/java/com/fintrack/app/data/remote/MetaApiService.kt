@@ -4,7 +4,9 @@ import com.fintrack.app.data.model.EstadoMeta
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 // "monto_objetivo_meta" va como String (no number): mismo patrón ya
@@ -43,6 +45,28 @@ data class MetaListaSalida(
     val offset: Int
 )
 
+// Resumen de la cuenta asociada a la meta: cuánto tiene reservado para otras
+// metas, cuánto está libre y cuánto se le puede aportar todavía.
+data class ResumenCuentaMetaResponse(
+    val saldo_actual_cuenta: String,
+    val reserva_total_cuenta: String,
+    val dinero_libre_cuenta: String,
+    val disponible_para_aportar: String,
+    val deficit_reservas_cuenta: String
+)
+
+data class MetaDetalleResponse(
+    val meta: MetaResponse,
+    val resumen_cuenta: ResumenCuentaMetaResponse
+)
+
+// El backend solo permite editar nombre y descripción por esta vía: el
+// monto objetivo y la fecha límite no se pueden cambiar una vez creada la meta.
+data class ActualizarMetaRequest(
+    val nombre_meta: String? = null,
+    val descripcion_meta: String? = null
+)
+
 interface MetaApiService {
     // Requiere sesión activa. Sin "estado" el backend filtra por ACTIVA
     // (su valor por defecto), no devuelve los 4 estados a la vez.
@@ -58,5 +82,18 @@ interface MetaApiService {
     suspend fun crearMeta(
         @Header("Authorization") authorization: String,
         @Body request: CrearMetaRequest
+    ): MetaResponse
+
+    @GET("api/v1/metas/{id_meta}")
+    suspend fun obtenerMeta(
+        @Header("Authorization") authorization: String,
+        @Path("id_meta") idMeta: String
+    ): MetaDetalleResponse
+
+    @PATCH("api/v1/metas/{id_meta}")
+    suspend fun actualizarMeta(
+        @Header("Authorization") authorization: String,
+        @Path("id_meta") idMeta: String,
+        @Body request: ActualizarMetaRequest
     ): MetaResponse
 }

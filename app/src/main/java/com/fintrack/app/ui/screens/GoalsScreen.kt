@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,9 +52,11 @@ import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.AppGoal
 import com.fintrack.app.data.model.EstadoMeta
+import com.fintrack.app.data.remote.ActualizarMetaRequest
 import com.fintrack.app.data.remote.CrearMetaRequest
 import com.fintrack.app.data.remote.CuentaListaItem
 import com.fintrack.app.data.remote.MetaResponse
+import com.fintrack.app.data.remote.ResumenCuentaMetaResponse
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
@@ -164,6 +167,21 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
 
     LaunchedEffect(Unit) { loadAccounts() }
 
+    // Id de la meta cuyo detalle se está viendo (tap sobre una tarjeta). El
+    // diálogo pide el detalle con GET /api/v1/metas/{id} (no reutiliza los
+    // datos ya cargados en la lista) y permite editar nombre/descripción
+    // con PATCH /api/v1/metas/{id}.
+    var selectedGoalId by remember { mutableStateOf<String?>(null) }
+    selectedGoalId?.let { goalId ->
+        GoalDetailDialog(
+            goalId = goalId,
+            onDismiss = { selectedGoalId = null },
+            onUpdated = { updated ->
+                goals = goals.map { if (it.id == updated.id) updated else it }
+            }
+        )
+    }
+
     var isAddingGoal by remember { mutableStateOf(false) }
     if (isAddingGoal) {
         AddGoalDialog(
@@ -259,7 +277,8 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
                     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                         GoalCard(
                             goal = goal,
-                            accountName = accounts.firstOrNull { it.id_cuenta == goal.accountId }?.nombre_cuenta
+                            accountName = accounts.firstOrNull { it.id_cuenta == goal.accountId }?.nombre_cuenta,
+                            onClick = { selectedGoalId = goal.id }
                         )
                     }
                 }
@@ -328,8 +347,8 @@ private fun GoalFilterChip(label: String, selected: Boolean, onClick: () -> Unit
 // Tarjeta de una meta: nombre + cuenta, barra de progreso (actual/objetivo),
 // montos y fecha límite (en rojo si ya venció sin alcanzarse).
 @Composable
-private fun GoalCard(goal: AppGoal, accountName: String?, modifier: Modifier = Modifier) {
-    SectionCard(modifier = modifier) {
+private fun GoalCard(goal: AppGoal, accountName: String?, onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
+    SectionCard(modifier = modifier.clickable(onClick = onClick)) {
         Text(
             text = goal.name,
             style = MaterialTheme.typography.titleMedium,
@@ -375,6 +394,214 @@ private fun GoalCard(goal: AppGoal, accountName: String?, modifier: Modifier = M
                 color = if (goal.isOverdue) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+// Popup de detalle de una meta. Pide el registro completo con
+// GET /api/v1/metas/{id} (no reutiliza los datos ya cargados en la lista),
+// e incluye el resumen de la cuenta asociada. Permite editar nombre y
+// descripción (lo único que acepta PATCH /api/v1/metas/{id}; el monto
+// objetivo y la fecha límite no se pueden cambiar una vez creada la meta).
+@Composable
+private fun GoalDetailDialog(
+    goalId: String,
+    onDismiss: () -> Unit,
+    onUpdated: (AppGoal) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var goal by remember { mutableStateOf<AppGoal?>(null) }
+    var resumen by remember { mutableStateOf<ResumenCuentaMetaResponse?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    var isEditing by remember { mutableStateOf(false) }
+    var nombreEdit by remember { mutableStateOf("") }
+    var descripcionEdit by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+
+    val loadDetail: () -> Unit = {
+        scope.launch {
+            isLoading = true
+            loadError = null
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                val response = RetrofitClient.metaApi.obtenerMeta("Bearer $token", goalId)
+                goal = response.meta.toAppGoal()
+                resumen = response.resumen_cuenta
+                nombreEdit = response.meta.nombre_meta
+                descripcionEdit = response.meta.descripcion_meta.orEmpty()
+            } catch (e: HttpException) {
+                loadError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+            } catch (e: IOException) {
+                loadError = "No se pudo conectar con el servidor. Revisa tu conexión."
+            } catch (e: IllegalStateException) {
+                loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(goalId) { loadDetail() }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = if (isEditing) "Editar meta" else "Detalle de la meta", fontWeight = FontWeight.Bold) },
+        text = {
+            when {
+                isLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator(color = FinTrackNavy) }
+                loadError != null -> Text(text = loadError.orEmpty(), color = FinTrackRed)
+                goal != null -> {
+                    val current = goal!!
+                    if (isEditing) {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            OutlinedTextField(
+                                value = nombreEdit,
+                                onValueChange = { nombreEdit = it; saveError = null },
+                                label = { Text("Nombre de la meta") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            OutlinedTextField(
+                                value = descripcionEdit,
+                                onValueChange = { descripcionEdit = it },
+                                label = { Text("Descripción (opcional)") },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            if (saveError != null) {
+                                Text(
+                                    text = saveError.orEmpty(),
+                                    color = FinTrackRed,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 12.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            GoalDetailRow("Estado", when (current.state) {
+                                EstadoMeta.ACTIVA -> "Activa"
+                                EstadoMeta.ALCANZADA -> "Alcanzada"
+                                EstadoMeta.NO_ALCANZADA -> "No alcanzada"
+                                EstadoMeta.CANCELADA -> "Cancelada"
+                            })
+                            GoalDetailRow("Monto actual", formatCurrency(current.currentAmount))
+                            GoalDetailRow("Objetivo", formatCurrency(current.targetAmount))
+                            GoalDetailRow("Faltante", formatCurrency(current.remainingAmount))
+                            GoalDetailRow("Avance", "${current.progressPercent.toInt()}%")
+                            GoalDetailRow(
+                                "Fecha límite",
+                                formatShortDate(current.deadline),
+                                valueColor = if (current.isOverdue) FinTrackRed else MaterialTheme.colorScheme.onSurface
+                            )
+                            current.description?.takeIf { it.isNotBlank() }?.let {
+                                GoalDetailRow("Descripción", it)
+                            }
+                            resumen?.let { summary ->
+                                Text(
+                                    text = "Resumen de la cuenta",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                                )
+                                GoalDetailRow("Saldo actual", formatCurrency(summary.saldo_actual_cuenta.toDoubleOrNull() ?: 0.0))
+                                GoalDetailRow("Reservado en metas", formatCurrency(summary.reserva_total_cuenta.toDoubleOrNull() ?: 0.0))
+                                GoalDetailRow("Dinero libre", formatCurrency(summary.dinero_libre_cuenta.toDoubleOrNull() ?: 0.0))
+                                GoalDetailRow("Disponible para aportar", formatCurrency(summary.disponible_para_aportar.toDoubleOrNull() ?: 0.0))
+                                val deficit = summary.deficit_reservas_cuenta.toDoubleOrNull() ?: 0.0
+                                if (deficit > 0) {
+                                    GoalDetailRow("Déficit de reservas", formatCurrency(deficit), valueColor = FinTrackRed)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (isEditing) {
+                Button(
+                    onClick = {
+                        val nombre = nombreEdit.trim()
+                        if (nombre.isEmpty()) return@Button
+                        scope.launch {
+                            isSaving = true
+                            saveError = null
+                            try {
+                                val token = SessionManager.getAccessToken(context)
+                                    ?: throw IllegalStateException("No hay sesión activa")
+                                val updated = RetrofitClient.metaApi.actualizarMeta(
+                                    authorization = "Bearer $token",
+                                    idMeta = goalId,
+                                    request = ActualizarMetaRequest(
+                                        nombre_meta = nombre,
+                                        descripcion_meta = descripcionEdit.trim().ifBlank { null }
+                                    )
+                                )
+                                goal = updated.toAppGoal()
+                                onUpdated(updated.toAppGoal())
+                                isEditing = false
+                            } catch (e: HttpException) {
+                                saveError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                            } catch (e: IOException) {
+                                saveError = "No se pudo conectar con el servidor. Revisa tu conexión."
+                            } catch (e: IllegalStateException) {
+                                saveError = "Tu sesión expiró. Vuelve a iniciar sesión."
+                            } finally {
+                                isSaving = false
+                            }
+                        }
+                    },
+                    enabled = nombreEdit.isNotBlank() && !isSaving,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+                ) {
+                    Text(text = if (isSaving) "Guardando..." else "Guardar")
+                }
+            } else {
+                TextButton(onClick = { isEditing = true }, enabled = goal != null) {
+                    Text(text = "Editar")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = { if (isEditing) isEditing = false else onDismiss() },
+                enabled = !isSaving
+            ) {
+                Text(text = if (isEditing) "Cancelar" else "Cerrar")
+            }
+        }
+    )
+}
+
+@Composable
+private fun GoalDetailRow(
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Text(text = value, color = valueColor, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
