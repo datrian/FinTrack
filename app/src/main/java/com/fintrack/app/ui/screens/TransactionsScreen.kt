@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,11 +51,14 @@ import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.Transaction
 import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionDirection
+import com.fintrack.app.data.model.TransactionSubcategory
 import com.fintrack.app.data.remote.CambiarEstadoCategoriaRequest
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearCategoriaRequest
+import com.fintrack.app.data.remote.CrearSubcategoriaRequest
 import com.fintrack.app.data.remote.RenombrarCategoriaRequest
 import com.fintrack.app.data.remote.RetrofitClient
+import com.fintrack.app.data.remote.SubcategoriaResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.SectionCard
@@ -72,6 +77,12 @@ private enum class TransactionFilter(val label: String) { TODAS("Todas"), GASTOS
 private fun CategoriaResponse.toTransactionCategory() = TransactionCategory(
     id = id_categoria,
     name = nombre_categoria
+)
+
+private fun SubcategoriaResponse.toTransactionSubcategory() = TransactionSubcategory(
+    id = id_subcategoria,
+    categoryId = categoria_id,
+    name = nombre_subcategoria
 )
 
 // Pantalla de Transacciones: lista de movimientos con filtro por tipo
@@ -213,6 +224,64 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
         )
     }
 
+    // Categoría cuyas subcategorías están expandidas en pantalla (solo una a
+    // la vez), su caché por categoría (para no repetir el GET al colapsar y
+    // volver a expandir), y el estado de carga/error de cada una.
+    var expandedCategoryId by remember { mutableStateOf<String?>(null) }
+    var subcategoriesByCategory by remember { mutableStateOf<Map<String, List<TransactionSubcategory>>>(emptyMap()) }
+    var loadingSubcategoriesFor by remember { mutableStateOf<String?>(null) }
+    var subcategoriesErrorByCategory by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var categoryForNewSubcategory by remember { mutableStateOf<TransactionCategory?>(null) }
+
+    val loadSubcategories: (String) -> Unit = { categoryId ->
+        scope.launch {
+            loadingSubcategoriesFor = categoryId
+            subcategoriesErrorByCategory = subcategoriesErrorByCategory - categoryId
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                val response = RetrofitClient.categoriaApi.obtenerSubcategorias("Bearer $token", categoryId)
+                subcategoriesByCategory = subcategoriesByCategory + (categoryId to response.subcategorias.map { it.toTransactionSubcategory() })
+            } catch (e: HttpException) {
+                val message = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                subcategoriesErrorByCategory = subcategoriesErrorByCategory + (categoryId to message)
+            } catch (e: IOException) {
+                subcategoriesErrorByCategory = subcategoriesErrorByCategory + (categoryId to "No se pudo conectar con el servidor. Revisa tu conexión.")
+            } catch (e: IllegalStateException) {
+                subcategoriesErrorByCategory = subcategoriesErrorByCategory + (categoryId to "Tu sesión expiró. Vuelve a iniciar sesión.")
+            } finally {
+                loadingSubcategoriesFor = null
+            }
+        }
+    }
+
+    // Al expandir una categoría por primera vez se trae su lista (GET); si ya
+    // estaba en caché, solo se vuelve a mostrar.
+    val toggleExpandCategory: (String) -> Unit = { categoryId ->
+        if (expandedCategoryId == categoryId) {
+            expandedCategoryId = null
+        } else {
+            expandedCategoryId = categoryId
+            if (!subcategoriesByCategory.containsKey(categoryId)) {
+                loadSubcategories(categoryId)
+            }
+        }
+    }
+
+    val categoryToAddSubcategory = categoryForNewSubcategory
+    if (categoryToAddSubcategory != null) {
+        AddSubcategoryDialog(
+            category = categoryToAddSubcategory,
+            onDismiss = { categoryForNewSubcategory = null },
+            // Se ejecuta cuando el POST al backend tuvo éxito.
+            onCreated = { newSubcategory ->
+                val existing = subcategoriesByCategory[categoryToAddSubcategory.id].orEmpty()
+                subcategoriesByCategory = subcategoriesByCategory + (categoryToAddSubcategory.id to (existing + newSubcategory))
+                categoryForNewSubcategory = null
+            }
+        )
+    }
+
     // Se recalcula en cada recomposición según el filtro elegido (no se guarda
     // una copia filtrada por separado, se deriva directo de los datos).
     val filtered = when (selectedFilter) {
@@ -297,9 +366,20 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                                     category = category,
                                     isLoading = loadingCategoryId == category.id,
                                     isDeactivating = deactivatingCategoryId == category.id,
+                                    isExpanded = expandedCategoryId == category.id,
+                                    onRowClick = { toggleExpandCategory(category.id) },
                                     onEditClick = { openRenameDialog(category.id) },
                                     onDeactivateClick = { categoryPendingDeactivation = category }
                                 )
+                                if (expandedCategoryId == category.id) {
+                                    SubcategoriesPanel(
+                                        subcategories = subcategoriesByCategory[category.id],
+                                        isLoading = loadingSubcategoriesFor == category.id,
+                                        error = subcategoriesErrorByCategory[category.id],
+                                        onRetry = { loadSubcategories(category.id) },
+                                        onAddClick = { categoryForNewSubcategory = category }
+                                    )
+                                }
                                 if (index != categories.lastIndex) {
                                     androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                                 }
@@ -343,16 +423,19 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// Una fila de categoría real del usuario: ícono circular + nombre, y los
-// botones de editar (lápiz, trae el GET y abre el diálogo de renombrar) y
-// desactivar (bote de basura). Mismo diseño que las categorías de ejemplo en
-// Administrar Categorías (CategoryRow de CategoriesScreen.kt): ícono circular
-// a la izquierda, dentro de un SectionCard compartido con divisores.
+// Una fila de categoría real del usuario: ícono circular + nombre (tocarlo
+// expande/colapsa sus subcategorías, trayéndolas con GET la primera vez), y
+// los botones de editar (lápiz, trae el GET y abre el diálogo de renombrar)
+// y desactivar (bote de basura). Mismo diseño que las categorías de ejemplo
+// en Administrar Categorías (CategoryRow de CategoriesScreen.kt): ícono
+// circular a la izquierda, dentro de un SectionCard compartido con divisores.
 @Composable
 private fun CategoryListRow(
     category: TransactionCategory,
     isLoading: Boolean,
     isDeactivating: Boolean,
+    isExpanded: Boolean,
+    onRowClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeactivateClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -363,23 +446,35 @@ private fun CategoryListRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(FinTrackNavy.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = Icons.Filled.Category, contentDescription = null, tint = FinTrackNavy)
-        }
-        Text(
-            text = category.name,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .padding(start = 12.dp)
                 .weight(1f)
-        )
+                .clickable { onRowClick() },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(FinTrackNavy.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = Icons.Filled.Category, contentDescription = null, tint = FinTrackNavy)
+            }
+            Text(
+                text = category.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            )
+            Icon(
+                imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (isExpanded) "Ocultar subcategorías" else "Ver subcategorías",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         IconButton(onClick = onEditClick, enabled = !isLoading && !isDeactivating) {
             if (isLoading) {
                 CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
@@ -394,6 +489,74 @@ private fun CategoryListRow(
                 Icon(imageVector = Icons.Filled.Delete, contentDescription = "Desactivar categoría", tint = FinTrackRed)
             }
         }
+    }
+}
+
+// Panel expandible debajo de una categoría: lista sus subcategorías reales
+// (GET /api/v1/categorias/{id}/subcategorias) y permite agregar una nueva (POST).
+@Composable
+private fun SubcategoriesPanel(
+    subcategories: List<TransactionSubcategory>?,
+    isLoading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 56.dp, end = 8.dp, bottom = 8.dp)
+    ) {
+        when {
+            isLoading -> {
+                CircularProgressIndicator(
+                    color = FinTrackNavy,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .padding(vertical = 6.dp)
+                        .size(20.dp)
+                )
+            }
+            error != null -> {
+                Text(text = error, color = FinTrackRed, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = "Reintentar",
+                    color = FinTrackNavy,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable { onRetry() }
+                )
+            }
+            subcategories.isNullOrEmpty() -> {
+                Text(
+                    text = "Sin subcategorías todavía.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            else -> {
+                subcategories.forEach { subcategory ->
+                    Text(
+                        text = subcategory.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            text = "+ Agregar subcategoría",
+            color = FinTrackNavy,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .clickable { onAddClick() }
+        )
     }
 }
 
@@ -481,6 +644,97 @@ private fun AddCategoryDialog(
                                 request = CrearCategoriaRequest(nombre_categoria = name.trim())
                             )
                             onCreated(created.toTransactionCategory())
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para crear una subcategoría nueva dentro de una categoría. Manda el
+// POST al backend él mismo y, si tuvo éxito, le pasa la subcategoría ya
+// creada a TransactionsScreen.
+@Composable
+private fun AddSubcategoryDialog(
+    category: TransactionCategory,
+    onDismiss: () -> Unit,
+    onCreated: (TransactionSubcategory) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // El backend exige entre 2 y 100 caracteres.
+    val isValid = name.trim().length in 2..100
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Nueva subcategoría", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    text = "Se agregará dentro de \"${category.name}\".",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Nombre de la subcategoría") },
+                    placeholder = { Text("Ej. Supermercados") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val created = RetrofitClient.categoriaApi.crearSubcategoria(
+                                authorization = "Bearer $token",
+                                idCategoria = category.id,
+                                request = CrearSubcategoriaRequest(nombre_subcategoria = name.trim())
+                            )
+                            onCreated(created.toTransactionSubcategory())
                         } catch (e: HttpException) {
                             isSaving = false
                             errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()

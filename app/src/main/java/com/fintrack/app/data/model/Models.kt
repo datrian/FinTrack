@@ -81,6 +81,14 @@ data class TransactionCategory(
     val name: String
 )
 
+// Una subcategoría real de una categoría del usuario, traída de
+// GET /api/v1/categorias/{id}/subcategorias.
+data class TransactionSubcategory(
+    val id: String,
+    val categoryId: String,
+    val name: String
+)
+
 // Una categoría de gasto (ej. "Comida"), con su ícono y cuántas subcategorías tiene.
 data class SpendingCategory(
     val id: String,

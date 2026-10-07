@@ -26,6 +26,20 @@ data class CambiarEstadoCategoriaRequest(val es_activa_categoria: Boolean)
 
 data class CategoriaEstadoResponse(val id_categoria: String, val es_activa_categoria: Boolean)
 
+data class CrearSubcategoriaRequest(val nombre_subcategoria: String)
+
+data class SubcategoriaResponse(
+    val id_subcategoria: String,
+    val categoria_id: String,
+    val nombre_subcategoria: String,
+    val es_activa_subcategoria: Boolean
+)
+
+data class SubcategoriaListaSalida(
+    val subcategorias: List<SubcategoriaResponse>,
+    val total: Int
+)
+
 interface CategoriaApiService {
     // Requiere sesión activa (Authorization: Bearer <token>). Sin parámetros,
     // el backend devuelve solo las categorías activas (estado=ACTIVA por defecto).
@@ -63,4 +77,19 @@ interface CategoriaApiService {
         @Path("id_categoria") idCategoria: String,
         @Body request: CambiarEstadoCategoriaRequest
     ): CategoriaEstadoResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Sin parámetros,
+    // el backend devuelve solo las subcategorías activas (estado=ACTIVA por defecto).
+    @GET("api/v1/categorias/{id_categoria}/subcategorias")
+    suspend fun obtenerSubcategorias(
+        @Header("Authorization") authorization: String,
+        @Path("id_categoria") idCategoria: String
+    ): SubcategoriaListaSalida
+
+    @POST("api/v1/categorias/{id_categoria}/subcategorias")
+    suspend fun crearSubcategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_categoria") idCategoria: String,
+        @Body request: CrearSubcategoriaRequest
+    ): SubcategoriaResponse
 }
