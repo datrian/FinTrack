@@ -1,5 +1,6 @@
 package com.fintrack.app.data.remote
 
+import com.fintrack.app.data.model.AccionCierrePresupuesto
 import com.fintrack.app.data.model.EstadoPresupuesto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -72,6 +73,8 @@ data class PresupuestoDetalleResponse(
     val detalles: List<DetallePresupuestoSalidaResponse>
 )
 
+data class CerrarPresupuestoRequest(val accion: AccionCierrePresupuesto)
+
 interface PresupuestoApiService {
     // "estado" acepta ACTIVO/FINALIZADO/CANCELADO/TODOS (por eso es String y
     // no EstadoPresupuesto: "TODOS" no es un estado real). Sin "estado" el
@@ -94,5 +97,12 @@ interface PresupuestoApiService {
     suspend fun obtenerPresupuesto(
         @Header("Authorization") authorization: String,
         @Path("id_presupuesto") idPresupuesto: String
+    ): PresupuestoDetalleResponse
+
+    @POST("api/v1/presupuestos/{id_presupuesto}/cierre")
+    suspend fun cerrarPresupuesto(
+        @Header("Authorization") authorization: String,
+        @Path("id_presupuesto") idPresupuesto: String,
+        @Body request: CerrarPresupuestoRequest
     ): PresupuestoDetalleResponse
 }

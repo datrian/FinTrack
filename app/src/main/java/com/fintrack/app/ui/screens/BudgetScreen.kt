@@ -52,10 +52,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
+import com.fintrack.app.data.model.AccionCierrePresupuesto
 import com.fintrack.app.data.model.AppBudget
 import com.fintrack.app.data.model.EstadoPresupuesto
 import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.remote.CategoriaResponse
+import com.fintrack.app.data.remote.CerrarPresupuestoRequest
 import com.fintrack.app.data.remote.CrearPresupuestoRequest
 import com.fintrack.app.data.remote.DetallePresupuestoCrearRequest
 import com.fintrack.app.data.remote.DetallePresupuestoSalidaResponse
@@ -185,7 +187,18 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
     selectedBudgetId?.let { budgetId ->
         BudgetDetailDialog(
             budgetId = budgetId,
-            onDismiss = { selectedBudgetId = null }
+            onDismiss = { selectedBudgetId = null },
+            onUpdated = { updated ->
+                // Si el estado del presupuesto ya no coincide con el filtro
+                // activo (ej. se finalizó/canceló estando en "Activos"),
+                // desaparece de la lista en vez de quedar mostrado con
+                // datos viejos.
+                budgets = if (selectedFilter.estado == "TODOS" || selectedFilter.estado == updated.state.name) {
+                    budgets.map { if (it.id == updated.id) updated else it }
+                } else {
+                    budgets.filterNot { it.id == updated.id }
+                }
+            }
         )
     }
 
@@ -419,7 +432,11 @@ private fun BudgetCard(budget: AppBudget, onClick: () -> Unit = {}, modifier: Mo
 // GET /api/v1/presupuestos/{id} (no reutiliza los datos ya cargados en la
 // lista), que incluye el desglose de consumo por cada categoría asignada.
 @Composable
-private fun BudgetDetailDialog(budgetId: String, onDismiss: () -> Unit) {
+private fun BudgetDetailDialog(
+    budgetId: String,
+    onDismiss: () -> Unit,
+    onUpdated: (AppBudget) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -429,6 +446,10 @@ private fun BudgetDetailDialog(budgetId: String, onDismiss: () -> Unit) {
     var detalles by remember { mutableStateOf<List<DetallePresupuestoSalidaResponse>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
+
+    var pendingAccionCierre by remember { mutableStateOf<AccionCierrePresupuesto?>(null) }
+    var isClosing by remember { mutableStateOf(false) }
+    var closeError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(budgetId) {
         scope.launch {
@@ -452,6 +473,78 @@ private fun BudgetDetailDialog(budgetId: String, onDismiss: () -> Unit) {
                 isLoading = false
             }
         }
+    }
+
+    // Confirmación antes de cerrar el presupuesto (acción irreversible):
+    // finalizarlo o cancelarlo con POST /api/v1/presupuestos/{id}/cierre.
+    val accionPendiente = pendingAccionCierre
+    if (accionPendiente != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isClosing) pendingAccionCierre = null },
+            title = {
+                Text(
+                    text = if (accionPendiente == AccionCierrePresupuesto.FINALIZAR) "Finalizar presupuesto" else "Cancelar presupuesto",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (accionPendiente == AccionCierrePresupuesto.FINALIZAR) {
+                        "El presupuesto se cerrará como finalizado y dejará de contabilizar gastos nuevos. ¿Deseas continuar?"
+                    } else {
+                        "El presupuesto se cancelará y dejará de estar activo. ¿Deseas continuar?"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            isClosing = true
+                            closeError = null
+                            try {
+                                val token = SessionManager.getAccessToken(context)
+                                    ?: throw IllegalStateException("No hay sesión activa")
+                                val response = RetrofitClient.presupuestoApi.cerrarPresupuesto(
+                                    authorization = "Bearer $token",
+                                    idPresupuesto = budgetId,
+                                    request = CerrarPresupuestoRequest(accion = accionPendiente)
+                                )
+                                budget = response.presupuesto.toAppBudget()
+                                consumidoPresupuestado = response.monto_consumido_presupuestado.toDoubleOrNull()
+                                consumidoNoPresupuestado = response.monto_consumido_no_presupuestado.toDoubleOrNull()
+                                detalles = response.detalles
+                                onUpdated(response.presupuesto.toAppBudget())
+                                pendingAccionCierre = null
+                            } catch (e: HttpException) {
+                                closeError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                                pendingAccionCierre = null
+                            } catch (e: IOException) {
+                                closeError = "No se pudo conectar con el servidor. Revisa tu conexión."
+                                pendingAccionCierre = null
+                            } catch (e: IllegalStateException) {
+                                closeError = "Tu sesión expiró. Vuelve a iniciar sesión."
+                                pendingAccionCierre = null
+                            } finally {
+                                isClosing = false
+                            }
+                        }
+                    },
+                    enabled = !isClosing
+                ) {
+                    Text(
+                        text = if (accionPendiente == AccionCierrePresupuesto.FINALIZAR) "Finalizar" else "Cancelar presupuesto",
+                        color = FinTrackRed,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAccionCierre = null }, enabled = !isClosing) {
+                    Text(text = "Volver")
+                }
+            }
+        )
     }
 
     AlertDialog(
@@ -499,6 +592,38 @@ private fun BudgetDetailDialog(budgetId: String, onDismiss: () -> Unit) {
                             detalles.forEach { detalle ->
                                 BudgetDetailCategoryRow(detalle)
                             }
+                        }
+
+                        if (current.state == EstadoPresupuesto.ACTIVO) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "Cancelar presupuesto",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = FinTrackRed,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { pendingAccionCierre = AccionCierrePresupuesto.CANCELAR }
+                                )
+                                Text(
+                                    text = "Finalizar presupuesto",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = FinTrackNavy,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { pendingAccionCierre = AccionCierrePresupuesto.FINALIZAR }
+                                )
+                            }
+                        }
+                        if (closeError != null) {
+                            Text(
+                                text = closeError.orEmpty(),
+                                color = FinTrackRed,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
                         }
                     }
                 }

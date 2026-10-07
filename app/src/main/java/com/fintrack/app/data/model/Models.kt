@@ -63,6 +63,11 @@ enum class AccionCierre { FINALIZAR, CANCELAR }
 // estado real y por eso no forma parte de este enum.
 enum class EstadoPresupuesto { ACTIVO, FINALIZADO, CANCELADO }
 
+// Las 2 acciones que acepta el cierre de un presupuesto (POST
+// /api/v1/presupuestos/{id}/cierre): FINALIZAR lo cierra como terminado;
+// CANCELAR lo cierra como cancelado.
+enum class AccionCierrePresupuesto { FINALIZAR, CANCELAR }
+
 // Un presupuesto real del usuario, traído de GET /api/v1/presupuestos. Es un
 // límite total de gasto para un período (sin cuenta asociada); el backend
 // calcula cuánto se ha consumido a partir de las transacciones de tipo GASTO
