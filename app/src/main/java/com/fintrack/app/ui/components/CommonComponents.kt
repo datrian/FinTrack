@@ -74,9 +74,11 @@ private val shortDateOutputFormat = DateTimeFormatter.ofPattern("d MMM yyyy", Lo
 
 // Igual que formatRegistrationDate pero compacto (ej. "5 oct 2026"), usado en
 // listas como las transacciones donde no hay espacio para la fecha completa.
+// También acepta fechas sin hora (ej. "fecha_limite_meta", solo "yyyy-MM-dd").
 fun formatShortDate(isoDateTime: String): String {
     val date = runCatching { OffsetDateTime.parse(isoDateTime).toLocalDate() }
         .recoverCatching { LocalDateTime.parse(isoDateTime).toLocalDate() }
+        .recoverCatching { java.time.LocalDate.parse(isoDateTime) }
         .getOrNull() ?: return isoDateTime
     return date.format(shortDateOutputFormat)
 }

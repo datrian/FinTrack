@@ -46,6 +46,26 @@ data class AppTransaction(
     val comment: String?
 )
 
+// Los 4 estados posibles de una meta de ahorro (GET/POST /api/v1/metas).
+enum class EstadoMeta { ACTIVA, CANCELADA, ALCANZADA, NO_ALCANZADA }
+
+// Una meta de ahorro real del usuario, traída de GET /api/v1/metas. El
+// backend calcula el avance (monto actual/faltante/porcentaje) a partir de
+// las asignaciones hechas a la cuenta, no se calcula en el cliente.
+data class AppGoal(
+    val id: String,
+    val accountId: String,
+    val name: String,
+    val description: String?,
+    val targetAmount: Double,
+    val currentAmount: Double,
+    val remainingAmount: Double,
+    val progressPercent: Double,
+    val deadline: String,
+    val state: EstadoMeta,
+    val isOverdue: Boolean
+)
+
 // Límite de gasto mensual para una categoría de presupuesto.
 data class BudgetCategoryLimit(
     val name: String,

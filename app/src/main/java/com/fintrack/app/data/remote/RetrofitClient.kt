@@ -64,4 +64,13 @@ object RetrofitClient {
             .build()
             .create(TransaccionApiService::class.java)
     }
+
+    val metaApi: MetaApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(MetaApiService::class.java)
+    }
 }

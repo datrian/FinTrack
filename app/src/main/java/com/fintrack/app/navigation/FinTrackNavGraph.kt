@@ -21,6 +21,7 @@ import com.fintrack.app.ui.screens.BudgetScreen
 import com.fintrack.app.ui.screens.CategoriesScreen
 import com.fintrack.app.ui.screens.ChangePasswordScreen
 import com.fintrack.app.ui.screens.CreateUserScreen
+import com.fintrack.app.ui.screens.GoalsScreen
 import com.fintrack.app.ui.screens.HomeScreen
 import com.fintrack.app.ui.screens.LoginScreen
 import com.fintrack.app.ui.screens.PredictionScreen
@@ -93,6 +94,7 @@ fun FinTrackApp() {
             composableRoute(FinTrackDestination.Accounts.route) { AccountsScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Transactions.route) { TransactionsScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Budget.route) { BudgetScreen(onOpenProfile = openProfile) }
+            composableRoute(FinTrackDestination.Goals.route) { GoalsScreen(onOpenProfile = openProfile) }
             composableRoute(FinTrackDestination.Prediction.route) { PredictionScreen(onOpenProfile = openProfile) }
 
             // Pantalla de categorías: categorías y subcategorías reales del
