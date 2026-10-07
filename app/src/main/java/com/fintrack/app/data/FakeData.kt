@@ -1,20 +1,10 @@
 package com.fintrack.app.data
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.ui.graphics.Color
 import com.fintrack.app.data.model.BudgetCategoryLimit
 import com.fintrack.app.data.model.FuturePrediction
 import com.fintrack.app.data.model.MonthProjection
-import com.fintrack.app.data.model.Transaction
-import com.fintrack.app.data.model.TransactionDirection
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
-import com.fintrack.app.ui.theme.FinTrackOrange
 import com.fintrack.app.ui.theme.FinTrackPurple
 import com.fintrack.app.ui.theme.FinTrackRed
 
@@ -30,60 +20,6 @@ object FakeData {
     const val BALANCE_CHANGE_PERCENT = 8.4
     const val MONTHLY_INCOME = 5400.00
     const val MONTHLY_EXPENSES = 2120.00
-
-    // Movimientos de ejemplo que aparecen en Inicio y en Transacciones.
-    val transactions = listOf(
-        Transaction(
-            id = "tx-1",
-            title = "Supermercado Walmart",
-            category = "Alimentos",
-            date = "Hoy, 10:45 AM",
-            amount = -85.50,
-            direction = TransactionDirection.GASTO,
-            icon = Icons.Filled.ShoppingCart,
-            iconBackground = FinTrackNavy.copy(alpha = 0.1f)
-        ),
-        Transaction(
-            id = "tx-2",
-            title = "Sueldo Quincenal",
-            category = "Nómina",
-            date = "Ayer, 6:00 PM",
-            amount = 2700.00,
-            direction = TransactionDirection.INGRESO,
-            icon = Icons.Filled.AccountBalanceWallet,
-            iconBackground = FinTrackGreen.copy(alpha = 0.15f)
-        ),
-        Transaction(
-            id = "tx-3",
-            title = "Suscripción Netflix",
-            category = "Entretenimiento",
-            date = "24 Oct",
-            amount = -12.99,
-            direction = TransactionDirection.GASTO,
-            icon = Icons.Filled.Tv,
-            iconBackground = FinTrackNavy.copy(alpha = 0.1f)
-        ),
-        Transaction(
-            id = "tx-4",
-            title = "Gasolinera Pemex",
-            category = "Transporte",
-            date = "23 Oct",
-            amount = -45.00,
-            direction = TransactionDirection.GASTO,
-            icon = Icons.Filled.DirectionsCar,
-            iconBackground = FinTrackNavy.copy(alpha = 0.1f)
-        ),
-        Transaction(
-            id = "tx-5",
-            title = "Transferencia Recibida",
-            category = "Otros",
-            date = "22 Oct",
-            amount = 120.00,
-            direction = TransactionDirection.INGRESO,
-            icon = Icons.Filled.ArrowDownward,
-            iconBackground = FinTrackGreen.copy(alpha = 0.15f)
-        )
-    )
 
     // Totales y límites por categoría para la pantalla de Presupuestos.
     const val BUDGET_TOTAL_SPENT = 2060.00

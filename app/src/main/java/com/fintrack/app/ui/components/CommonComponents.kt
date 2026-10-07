@@ -70,6 +70,17 @@ fun formatRegistrationDate(isoDateTime: String): String {
     return date.format(registrationDateOutputFormat)
 }
 
+private val shortDateOutputFormat = DateTimeFormatter.ofPattern("d MMM yyyy", Locale("es", "ES"))
+
+// Igual que formatRegistrationDate pero compacto (ej. "5 oct 2026"), usado en
+// listas como las transacciones donde no hay espacio para la fecha completa.
+fun formatShortDate(isoDateTime: String): String {
+    val date = runCatching { OffsetDateTime.parse(isoDateTime).toLocalDate() }
+        .recoverCatching { LocalDateTime.parse(isoDateTime).toLocalDate() }
+        .getOrNull() ?: return isoDateTime
+    return date.format(shortDateOutputFormat)
+}
+
 /** Top app bar used on every top-level screen: hamburger menu, screen title and logo. */
 @Composable
 fun FinTrackTopBar(

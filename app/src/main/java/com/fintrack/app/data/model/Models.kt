@@ -1,7 +1,6 @@
 package com.fintrack.app.data.model
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 
 // Este archivo define los "modelos": las clases de datos que representan la
 // información que se muestra en la app (cuentas, movimientos, presupuestos, etc).
@@ -28,19 +27,23 @@ data class Account(
     val balance: Double
 )
 
-// Indica si un movimiento es dinero que entra (INGRESO) o que sale (GASTO).
-enum class TransactionDirection { INGRESO, GASTO }
+// Los 3 tipos de movimiento que acepta el backend (POST/GET /api/v1/transacciones).
+enum class TipoTransaccion { INGRESO, GASTO, TRANSFERENCIA }
 
-// Un movimiento/transacción individual (por ejemplo, "Supermercado -$50").
-data class Transaction(
+// Un movimiento real del usuario, traído de GET /api/v1/transacciones. El
+// backend no guarda título ni ícono: "comment" (si existe) hace de título, y
+// la UI resuelve categoryId/subcategoryId a un nombre usando las listas ya
+// cargadas de categorías/subcategorías.
+data class AppTransaction(
     val id: String,
-    val title: String,
-    val category: String,
-    val date: String,
+    val type: TipoTransaccion,
+    val accountId: String,
+    val destinationAccountId: String?,
+    val categoryId: String?,
+    val subcategoryId: String?,
     val amount: Double,
-    val direction: TransactionDirection,
-    val icon: ImageVector,
-    val iconBackground: Color
+    val date: String,
+    val comment: String?
 )
 
 // Límite de gasto mensual para una categoría de presupuesto.
