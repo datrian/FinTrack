@@ -73,4 +73,13 @@ object RetrofitClient {
             .build()
             .create(MetaApiService::class.java)
     }
+
+    val presupuestoApi: PresupuestoApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(PresupuestoApiService::class.java)
+    }
 }

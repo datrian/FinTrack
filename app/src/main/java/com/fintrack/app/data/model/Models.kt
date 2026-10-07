@@ -1,7 +1,5 @@
 package com.fintrack.app.data.model
 
-import androidx.compose.ui.graphics.Color
-
 // Este archivo define los "modelos": las clases de datos que representan la
 // información que se muestra en la app (cuentas, movimientos, presupuestos, etc).
 // Son objetos simples, sin lógica de UI, que las pantallas leen para dibujar.
@@ -60,6 +58,29 @@ enum class TipoAsignacion { APORTE, RETIRO }
 // CANCELAR la cierra como cancelada sin evaluar el monto.
 enum class AccionCierre { FINALIZAR, CANCELAR }
 
+// Los 3 estados posibles de un presupuesto (GET/POST /api/v1/presupuestos).
+// El GET también acepta el valor especial "TODOS" como filtro, que no es un
+// estado real y por eso no forma parte de este enum.
+enum class EstadoPresupuesto { ACTIVO, FINALIZADO, CANCELADO }
+
+// Un presupuesto real del usuario, traído de GET /api/v1/presupuestos. Es un
+// límite total de gasto para un período (sin cuenta asociada); el backend
+// calcula cuánto se ha consumido a partir de las transacciones de tipo GASTO
+// registradas en ese período.
+data class AppBudget(
+    val id: String,
+    val startDate: String,
+    val endDate: String,
+    val state: EstadoPresupuesto,
+    val limitAmount: Double,
+    val consumedAmount: Double,
+    val remainingAmount: Double,
+    val exceededAmount: Double,
+    val consumedPercent: Double,
+    val indicator: String,
+    val isOverdue: Boolean
+)
+
 // Una meta de ahorro real del usuario, traída de GET /api/v1/metas. El
 // backend calcula el avance (monto actual/faltante/porcentaje) a partir de
 // las asignaciones hechas a la cuenta, no se calcula en el cliente.
@@ -76,20 +97,6 @@ data class AppGoal(
     val state: EstadoMeta,
     val isOverdue: Boolean
 )
-
-// Límite de gasto mensual para una categoría de presupuesto.
-data class BudgetCategoryLimit(
-    val name: String,
-    val spent: Double,
-    val limit: Double,
-    val barColor: Color
-) {
-    // Propiedad calculada (no se guarda, se recalcula cada vez que se lee):
-    // porcentaje gastado respecto al límite, acotado entre 0 y 999 para que
-    // nunca se muestre un número absurdo en la barra de progreso.
-    val percentage: Int
-        get() = ((spent / limit) * 100).toInt().coerceIn(0, 999)
-}
 
 // Un punto del gráfico de proyección mensual (pantalla de Predicción).
 data class MonthProjection(
