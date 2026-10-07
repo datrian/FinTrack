@@ -1,6 +1,7 @@
 package com.fintrack.app.data.remote
 
 import com.fintrack.app.data.model.EstadoMeta
+import com.fintrack.app.data.model.TipoAsignacion
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -67,6 +68,31 @@ data class ActualizarMetaRequest(
     val descripcion_meta: String? = null
 )
 
+// "monto_asignacion" va como String (no number): mismo patrón ya confirmado
+// contra el backend real en transacciones y metas (el schema admite number
+// o string, pero el validador exige texto decimal).
+data class AsignacionCrearRequest(
+    val tipo_asignacion: TipoAsignacion,
+    val monto_asignacion: String,
+    val comentario_asignacion: String? = null
+)
+
+data class AsignacionResponse(
+    val id_asignacion: String,
+    val meta_id: String,
+    val tipo_asignacion: TipoAsignacion,
+    val monto_asignacion: String,
+    val fecha_registro_asignacion: String,
+    val comentario_asignacion: String?
+)
+
+data class AsignacionListaSalida(
+    val asignaciones: List<AsignacionResponse>,
+    val total: Int,
+    val limite: Int,
+    val offset: Int
+)
+
 interface MetaApiService {
     // Requiere sesión activa. Sin "estado" el backend filtra por ACTIVA
     // (su valor por defecto), no devuelve los 4 estados a la vez.
@@ -96,4 +122,20 @@ interface MetaApiService {
         @Path("id_meta") idMeta: String,
         @Body request: ActualizarMetaRequest
     ): MetaResponse
+
+    @GET("api/v1/metas/{id_meta}/asignaciones")
+    suspend fun obtenerAsignaciones(
+        @Header("Authorization") authorization: String,
+        @Path("id_meta") idMeta: String,
+        @Query("tipo_asignacion") tipoAsignacion: TipoAsignacion? = null,
+        @Query("limite") limite: Int = 20,
+        @Query("offset") offset: Int = 0
+    ): AsignacionListaSalida
+
+    @POST("api/v1/metas/{id_meta}/asignaciones")
+    suspend fun crearAsignacion(
+        @Header("Authorization") authorization: String,
+        @Path("id_meta") idMeta: String,
+        @Body request: AsignacionCrearRequest
+    ): AsignacionResponse
 }

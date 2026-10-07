@@ -49,6 +49,11 @@ data class AppTransaction(
 // Los 4 estados posibles de una meta de ahorro (GET/POST /api/v1/metas).
 enum class EstadoMeta { ACTIVA, CANCELADA, ALCANZADA, NO_ALCANZADA }
 
+// Los 2 tipos de asignación que acepta el backend (GET/POST
+// /api/v1/metas/{id}/asignaciones): un aporte suma al monto actual de la
+// meta, un retiro lo resta.
+enum class TipoAsignacion { APORTE, RETIRO }
+
 // Una meta de ahorro real del usuario, traída de GET /api/v1/metas. El
 // backend calcula el avance (monto actual/faltante/porcentaje) a partir de
 // las asignaciones hechas a la cuenta, no se calcula en el cliente.

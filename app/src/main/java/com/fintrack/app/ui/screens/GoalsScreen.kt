@@ -52,7 +52,10 @@ import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.AppGoal
 import com.fintrack.app.data.model.EstadoMeta
+import com.fintrack.app.data.model.TipoAsignacion
 import com.fintrack.app.data.remote.ActualizarMetaRequest
+import com.fintrack.app.data.remote.AsignacionCrearRequest
+import com.fintrack.app.data.remote.AsignacionResponse
 import com.fintrack.app.data.remote.CrearMetaRequest
 import com.fintrack.app.data.remote.CuentaListaItem
 import com.fintrack.app.data.remote.MetaResponse
@@ -422,31 +425,74 @@ private fun GoalDetailDialog(
     var isSaving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
 
-    val loadDetail: () -> Unit = {
-        scope.launch {
-            isLoading = true
-            loadError = null
-            try {
-                val token = SessionManager.getAccessToken(context)
-                    ?: throw IllegalStateException("No hay sesión activa")
-                val response = RetrofitClient.metaApi.obtenerMeta("Bearer $token", goalId)
-                goal = response.meta.toAppGoal()
-                resumen = response.resumen_cuenta
-                nombreEdit = response.meta.nombre_meta
-                descripcionEdit = response.meta.descripcion_meta.orEmpty()
-            } catch (e: HttpException) {
-                loadError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-            } catch (e: IOException) {
-                loadError = "No se pudo conectar con el servidor. Revisa tu conexión."
-            } catch (e: IllegalStateException) {
-                loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
-            } finally {
-                isLoading = false
-            }
+    var asignaciones by remember { mutableStateOf<List<AsignacionResponse>>(emptyList()) }
+    var isLoadingAsignaciones by remember { mutableStateOf(true) }
+    var asignacionesError by remember { mutableStateOf<String?>(null) }
+    var isAddingAsignacion by remember { mutableStateOf(false) }
+
+    // Función normal (no lambda) para poder encadenarla con suspend fun
+    // después de crear una asignación (el monto actual/avance/estado de la
+    // meta cambian al crear un aporte o retiro).
+    suspend fun fetchDetail() {
+        isLoading = true
+        loadError = null
+        try {
+            val token = SessionManager.getAccessToken(context)
+                ?: throw IllegalStateException("No hay sesión activa")
+            val response = RetrofitClient.metaApi.obtenerMeta("Bearer $token", goalId)
+            goal = response.meta.toAppGoal()
+            resumen = response.resumen_cuenta
+            nombreEdit = response.meta.nombre_meta
+            descripcionEdit = response.meta.descripcion_meta.orEmpty()
+            onUpdated(response.meta.toAppGoal())
+        } catch (e: HttpException) {
+            loadError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+        } catch (e: IOException) {
+            loadError = "No se pudo conectar con el servidor. Revisa tu conexión."
+        } catch (e: IllegalStateException) {
+            loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
+        } finally {
+            isLoading = false
         }
     }
 
-    LaunchedEffect(goalId) { loadDetail() }
+    suspend fun fetchAsignaciones() {
+        isLoadingAsignaciones = true
+        asignacionesError = null
+        try {
+            val token = SessionManager.getAccessToken(context)
+                ?: throw IllegalStateException("No hay sesión activa")
+            asignaciones = RetrofitClient.metaApi.obtenerAsignaciones("Bearer $token", goalId).asignaciones
+        } catch (e: HttpException) {
+            asignacionesError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+        } catch (e: IOException) {
+            asignacionesError = "No se pudo conectar con el servidor. Revisa tu conexión."
+        } catch (e: IllegalStateException) {
+            asignacionesError = "Tu sesión expiró. Vuelve a iniciar sesión."
+        } finally {
+            isLoadingAsignaciones = false
+        }
+    }
+
+    LaunchedEffect(goalId) {
+        fetchDetail()
+        fetchAsignaciones()
+    }
+
+    if (isAddingAsignacion) {
+        AddAsignacionDialog(
+            goalId = goalId,
+            onDismiss = { isAddingAsignacion = false },
+            onCreated = { newAsignacion ->
+                asignaciones = listOf(newAsignacion) + asignaciones
+                isAddingAsignacion = false
+                // El aporte/retiro cambia monto actual, avance y posiblemente
+                // el estado de la meta (ej. pasa a ALCANZADA): se vuelve a
+                // pedir el detalle para reflejarlo.
+                scope.launch { fetchDetail() }
+            }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -526,6 +572,47 @@ private fun GoalDetailDialog(
                                     GoalDetailRow("Déficit de reservas", formatCurrency(deficit), valueColor = FinTrackRed)
                                 }
                             }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Aportes y retiros",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "+ Agregar",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = FinTrackNavy,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { isAddingAsignacion = true }
+                                )
+                            }
+                            when {
+                                isLoadingAsignaciones -> Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) { CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)) }
+                                asignacionesError != null -> Text(
+                                    text = asignacionesError.orEmpty(),
+                                    color = FinTrackRed,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                asignaciones.isEmpty() -> Text(
+                                    text = "Todavía no hay aportes ni retiros.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                else -> asignaciones.forEach { asignacion ->
+                                    AsignacionRow(asignacion)
+                                }
+                            }
                         }
                     }
                 }
@@ -603,6 +690,174 @@ private fun GoalDetailRow(
         Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         Text(text = value, color = valueColor, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+// Una fila de la lista de aportes/retiros: tipo + fecha a la izquierda,
+// monto con signo y color a la derecha, comentario (si hay) debajo.
+@Composable
+private fun AsignacionRow(asignacion: AsignacionResponse, modifier: Modifier = Modifier) {
+    val isAporte = asignacion.tipo_asignacion == TipoAsignacion.APORTE
+    val monto = asignacion.monto_asignacion.toDoubleOrNull() ?: 0.0
+    Column(modifier = modifier.padding(vertical = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = if (isAporte) "Aporte" else "Retiro",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = formatShortDate(asignacion.fecha_registro_asignacion),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = (if (isAporte) "+" else "-") + formatCurrency(monto),
+                color = if (isAporte) FinTrackGreen else FinTrackRed,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        asignacion.comentario_asignacion?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// Popup para crear un aporte o retiro sobre una meta. Manda el POST a
+// /api/v1/metas/{id}/asignaciones él mismo y, si tuvo éxito, le pasa la
+// asignación ya creada a GoalDetailDialog.
+@Composable
+private fun AddAsignacionDialog(
+    goalId: String,
+    onDismiss: () -> Unit,
+    onCreated: (AsignacionResponse) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var selectedTipo by remember { mutableStateOf(TipoAsignacion.APORTE) }
+    var montoText by remember { mutableStateOf("") }
+    var comentario by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val monto = montoText.toDoubleOrNull()
+    val isValid = monto != null && monto > 0
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Nuevo aporte o retiro", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "Tipo",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GoalSelectableChip(
+                        label = "Aporte",
+                        selected = selectedTipo == TipoAsignacion.APORTE,
+                        onClick = { selectedTipo = TipoAsignacion.APORTE }
+                    )
+                    GoalSelectableChip(
+                        label = "Retiro",
+                        selected = selectedTipo == TipoAsignacion.RETIRO,
+                        onClick = { selectedTipo = TipoAsignacion.RETIRO }
+                    )
+                }
+
+                OutlinedTextField(
+                    value = montoText,
+                    onValueChange = { montoText = it; errorMessage = null },
+                    label = { Text("Monto") },
+                    placeholder = { Text("Ej. 200.00") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = comentario,
+                    onValueChange = { comentario = it },
+                    label = { Text("Comentario (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val montoValue = monto ?: return@Button
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        try {
+                            val token = SessionManager.getAccessToken(context)
+                                ?: throw IllegalStateException("No hay sesión activa")
+                            val created = RetrofitClient.metaApi.crearAsignacion(
+                                authorization = "Bearer $token",
+                                idMeta = goalId,
+                                request = AsignacionCrearRequest(
+                                    tipo_asignacion = selectedTipo,
+                                    // El backend exige el monto como texto decimal, no como número.
+                                    monto_asignacion = String.format(java.util.Locale.US, "%.2f", montoValue),
+                                    comentario_asignacion = comentario.trim().ifBlank { null }
+                                )
+                            )
+                            onCreated(created)
+                        } catch (e: HttpException) {
+                            isSaving = false
+                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                        } catch (e: IOException) {
+                            isSaving = false
+                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
+                        } catch (e: IllegalStateException) {
+                            isSaving = false
+                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
+                        }
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
 }
 
 // Popup para crear una meta nueva. Manda el POST al backend él mismo y, si
