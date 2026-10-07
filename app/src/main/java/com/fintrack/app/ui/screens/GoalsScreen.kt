@@ -50,12 +50,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
+import com.fintrack.app.data.model.AccionCierre
 import com.fintrack.app.data.model.AppGoal
 import com.fintrack.app.data.model.EstadoMeta
 import com.fintrack.app.data.model.TipoAsignacion
 import com.fintrack.app.data.remote.ActualizarMetaRequest
 import com.fintrack.app.data.remote.AsignacionCrearRequest
 import com.fintrack.app.data.remote.AsignacionResponse
+import com.fintrack.app.data.remote.CerrarMetaRequest
 import com.fintrack.app.data.remote.CrearMetaRequest
 import com.fintrack.app.data.remote.CuentaListaItem
 import com.fintrack.app.data.remote.MetaResponse
@@ -180,7 +182,14 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
             goalId = goalId,
             onDismiss = { selectedGoalId = null },
             onUpdated = { updated ->
-                goals = goals.map { if (it.id == updated.id) updated else it }
+                // Si el estado de la meta ya no coincide con el filtro activo
+                // (ej. se canceló o finalizó estando en "Activas"), desaparece
+                // de la lista en vez de quedar mostrada con datos viejos.
+                goals = if (updated.state == selectedFilter.estado) {
+                    goals.map { if (it.id == updated.id) updated else it }
+                } else {
+                    goals.filterNot { it.id == updated.id }
+                }
             }
         )
     }
@@ -430,6 +439,10 @@ private fun GoalDetailDialog(
     var asignacionesError by remember { mutableStateOf<String?>(null) }
     var isAddingAsignacion by remember { mutableStateOf(false) }
 
+    var pendingAccionCierre by remember { mutableStateOf<AccionCierre?>(null) }
+    var isClosing by remember { mutableStateOf(false) }
+    var closeError by remember { mutableStateOf<String?>(null) }
+
     // Función normal (no lambda) para poder encadenarla con suspend fun
     // después de crear una asignación (el monto actual/avance/estado de la
     // meta cambian al crear un aporte o retiro).
@@ -490,6 +503,75 @@ private fun GoalDetailDialog(
                 // el estado de la meta (ej. pasa a ALCANZADA): se vuelve a
                 // pedir el detalle para reflejarlo.
                 scope.launch { fetchDetail() }
+            }
+        )
+    }
+
+    // Confirmación antes de cerrar la meta (acción irreversible): finalizarla
+    // o cancelarla con POST /api/v1/metas/{id}/cierre.
+    val accionPendiente = pendingAccionCierre
+    if (accionPendiente != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isClosing) pendingAccionCierre = null },
+            title = {
+                Text(
+                    text = if (accionPendiente == AccionCierre.FINALIZAR) "Finalizar meta" else "Cancelar meta",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (accionPendiente == AccionCierre.FINALIZAR) {
+                        "La meta se cerrará como alcanzada o no alcanzada según el monto actual. Ya no podrás agregar más aportes ni retiros. ¿Deseas continuar?"
+                    } else {
+                        "La meta se cancelará y dejará de estar activa. Ya no podrás agregar más aportes ni retiros. ¿Deseas continuar?"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            isClosing = true
+                            closeError = null
+                            try {
+                                val token = SessionManager.getAccessToken(context)
+                                    ?: throw IllegalStateException("No hay sesión activa")
+                                val updated = RetrofitClient.metaApi.cerrarMeta(
+                                    authorization = "Bearer $token",
+                                    idMeta = goalId,
+                                    request = CerrarMetaRequest(accion = accionPendiente)
+                                )
+                                goal = updated.toAppGoal()
+                                onUpdated(updated.toAppGoal())
+                                pendingAccionCierre = null
+                            } catch (e: HttpException) {
+                                closeError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+                                pendingAccionCierre = null
+                            } catch (e: IOException) {
+                                closeError = "No se pudo conectar con el servidor. Revisa tu conexión."
+                                pendingAccionCierre = null
+                            } catch (e: IllegalStateException) {
+                                closeError = "Tu sesión expiró. Vuelve a iniciar sesión."
+                                pendingAccionCierre = null
+                            } finally {
+                                isClosing = false
+                            }
+                        }
+                    },
+                    enabled = !isClosing
+                ) {
+                    Text(
+                        text = if (accionPendiente == AccionCierre.FINALIZAR) "Finalizar" else "Cancelar meta",
+                        color = FinTrackRed,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAccionCierre = null }, enabled = !isClosing) {
+                    Text(text = "Volver")
+                }
             }
         )
     }
@@ -586,13 +668,15 @@ private fun GoalDetailDialog(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(
-                                    text = "+ Agregar",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = FinTrackNavy,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { isAddingAsignacion = true }
-                                )
+                                if (current.state == EstadoMeta.ACTIVA) {
+                                    Text(
+                                        text = "+ Agregar",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = FinTrackNavy,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { isAddingAsignacion = true }
+                                    )
+                                }
                             }
                             when {
                                 isLoadingAsignaciones -> Box(
@@ -612,6 +696,38 @@ private fun GoalDetailDialog(
                                 else -> asignaciones.forEach { asignacion ->
                                     AsignacionRow(asignacion)
                                 }
+                            }
+
+                            if (current.state == EstadoMeta.ACTIVA) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Cancelar meta",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = FinTrackRed,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { pendingAccionCierre = AccionCierre.CANCELAR }
+                                    )
+                                    Text(
+                                        text = "Finalizar meta",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = FinTrackNavy,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { pendingAccionCierre = AccionCierre.FINALIZAR }
+                                    )
+                                }
+                            }
+                            if (closeError != null) {
+                                Text(
+                                    text = closeError.orEmpty(),
+                                    color = FinTrackRed,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
                             }
                         }
                     }

@@ -54,6 +54,12 @@ enum class EstadoMeta { ACTIVA, CANCELADA, ALCANZADA, NO_ALCANZADA }
 // meta, un retiro lo resta.
 enum class TipoAsignacion { APORTE, RETIRO }
 
+// Las 2 acciones que acepta el cierre de una meta (POST
+// /api/v1/metas/{id}/cierre): FINALIZAR la cierra como alcanzada o no
+// alcanzada (según el monto actual vs el objetivo, lo decide el backend);
+// CANCELAR la cierra como cancelada sin evaluar el monto.
+enum class AccionCierre { FINALIZAR, CANCELAR }
+
 // Una meta de ahorro real del usuario, traída de GET /api/v1/metas. El
 // backend calcula el avance (monto actual/faltante/porcentaje) a partir de
 // las asignaciones hechas a la cuenta, no se calcula en el cliente.

@@ -1,5 +1,6 @@
 package com.fintrack.app.data.remote
 
+import com.fintrack.app.data.model.AccionCierre
 import com.fintrack.app.data.model.EstadoMeta
 import com.fintrack.app.data.model.TipoAsignacion
 import retrofit2.http.Body
@@ -93,6 +94,8 @@ data class AsignacionListaSalida(
     val offset: Int
 )
 
+data class CerrarMetaRequest(val accion: AccionCierre)
+
 interface MetaApiService {
     // Requiere sesión activa. Sin "estado" el backend filtra por ACTIVA
     // (su valor por defecto), no devuelve los 4 estados a la vez.
@@ -138,4 +141,11 @@ interface MetaApiService {
         @Path("id_meta") idMeta: String,
         @Body request: AsignacionCrearRequest
     ): AsignacionResponse
+
+    @POST("api/v1/metas/{id_meta}/cierre")
+    suspend fun cerrarMeta(
+        @Header("Authorization") authorization: String,
+        @Path("id_meta") idMeta: String,
+        @Body request: CerrarMetaRequest
+    ): MetaResponse
 }
