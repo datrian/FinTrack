@@ -75,6 +75,15 @@ data class PresupuestoDetalleResponse(
 
 data class CerrarPresupuestoRequest(val accion: AccionCierrePresupuesto)
 
+// Cada gasto es una transacción real (GASTO) del período del presupuesto;
+// reutiliza el mismo shape que devuelve GET /api/v1/transacciones.
+data class PresupuestoGastosSalida(
+    val gastos: List<TransaccionResponse>,
+    val total: Int,
+    val limite: Int,
+    val offset: Int
+)
+
 interface PresupuestoApiService {
     // "estado" acepta ACTIVO/FINALIZADO/CANCELADO/TODOS (por eso es String y
     // no EstadoPresupuesto: "TODOS" no es un estado real). Sin "estado" el
@@ -105,4 +114,16 @@ interface PresupuestoApiService {
         @Path("id_presupuesto") idPresupuesto: String,
         @Body request: CerrarPresupuestoRequest
     ): PresupuestoDetalleResponse
+
+    // "alcance" filtra entre TODOS (por defecto)/PRESUPUESTADOS (de una
+    // categoría del presupuesto)/NO_PRESUPUESTADOS (de otras categorías).
+    @GET("api/v1/presupuestos/{id_presupuesto}/gastos")
+    suspend fun obtenerGastosPresupuesto(
+        @Header("Authorization") authorization: String,
+        @Path("id_presupuesto") idPresupuesto: String,
+        @Query("alcance") alcance: String? = null,
+        @Query("categoria_id") categoriaId: String? = null,
+        @Query("limite") limite: Int = 20,
+        @Query("offset") offset: Int = 0
+    ): PresupuestoGastosSalida
 }

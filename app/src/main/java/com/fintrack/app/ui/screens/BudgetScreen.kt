@@ -63,6 +63,7 @@ import com.fintrack.app.data.remote.DetallePresupuestoCrearRequest
 import com.fintrack.app.data.remote.DetallePresupuestoSalidaResponse
 import com.fintrack.app.data.remote.PresupuestoResumenResponse
 import com.fintrack.app.data.remote.RetrofitClient
+import com.fintrack.app.data.remote.TransaccionResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
@@ -86,6 +87,15 @@ private enum class BudgetFilter(val label: String, val estado: String) {
     FINALIZADOS("Finalizados", "FINALIZADO"),
     CANCELADOS("Cancelados", "CANCELADO"),
     TODOS("Todos", "TODOS")
+}
+
+// Los 3 alcances disponibles sobre la lista de gastos de un presupuesto
+// (GET /api/v1/presupuestos/{id}/gastos): todos, solo los de categorías
+// presupuestadas, o solo los que quedaron fuera del presupuesto.
+private enum class GastoScope(val label: String, val alcance: String) {
+    TODOS("Todos", "TODOS"),
+    PRESUPUESTADOS("Presupuestados", "PRESUPUESTADOS"),
+    NO_PRESUPUESTADOS("No presupuestados", "NO_PRESUPUESTADOS")
 }
 
 private fun PresupuestoResumenResponse.toAppBudget() = AppBudget(
@@ -187,6 +197,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
     selectedBudgetId?.let { budgetId ->
         BudgetDetailDialog(
             budgetId = budgetId,
+            categories = categories,
             onDismiss = { selectedBudgetId = null },
             onUpdated = { updated ->
                 // Si el estado del presupuesto ya no coincide con el filtro
@@ -434,6 +445,7 @@ private fun BudgetCard(budget: AppBudget, onClick: () -> Unit = {}, modifier: Mo
 @Composable
 private fun BudgetDetailDialog(
     budgetId: String,
+    categories: List<TransactionCategory>,
     onDismiss: () -> Unit,
     onUpdated: (AppBudget) -> Unit
 ) {
@@ -450,6 +462,11 @@ private fun BudgetDetailDialog(
     var pendingAccionCierre by remember { mutableStateOf<AccionCierrePresupuesto?>(null) }
     var isClosing by remember { mutableStateOf(false) }
     var closeError by remember { mutableStateOf<String?>(null) }
+
+    var selectedGastoScope by remember { mutableStateOf(GastoScope.TODOS) }
+    var gastos by remember { mutableStateOf<List<TransaccionResponse>>(emptyList()) }
+    var isLoadingGastos by remember { mutableStateOf(true) }
+    var gastosError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(budgetId) {
         scope.launch {
@@ -471,6 +488,32 @@ private fun BudgetDetailDialog(
                 loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
             } finally {
                 isLoading = false
+            }
+        }
+    }
+
+    // Se vuelve a pedir cada vez que cambia el alcance (el backend filtra
+    // con el query param "alcance", no se filtra en el cliente).
+    LaunchedEffect(budgetId, selectedGastoScope) {
+        scope.launch {
+            isLoadingGastos = true
+            gastosError = null
+            try {
+                val token = SessionManager.getAccessToken(context)
+                    ?: throw IllegalStateException("No hay sesión activa")
+                gastos = RetrofitClient.presupuestoApi.obtenerGastosPresupuesto(
+                    authorization = "Bearer $token",
+                    idPresupuesto = budgetId,
+                    alcance = selectedGastoScope.alcance
+                ).gastos
+            } catch (e: HttpException) {
+                gastosError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
+            } catch (e: IOException) {
+                gastosError = "No se pudo conectar con el servidor. Revisa tu conexión."
+            } catch (e: IllegalStateException) {
+                gastosError = "Tu sesión expiró. Vuelve a iniciar sesión."
+            } finally {
+                isLoadingGastos = false
             }
         }
     }
@@ -594,6 +637,52 @@ private fun BudgetDetailDialog(
                             }
                         }
 
+                        Text(
+                            text = "Gastos del período",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GastoScope.entries.forEach { scope ->
+                                BudgetFilterChip(
+                                    label = scope.label,
+                                    selected = scope == selectedGastoScope,
+                                    onClick = { selectedGastoScope = scope }
+                                )
+                            }
+                        }
+                        when {
+                            isLoadingGastos -> Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) { CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)) }
+                            gastosError != null -> Text(
+                                text = gastosError.orEmpty(),
+                                color = FinTrackRed,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            gastos.isEmpty() -> Text(
+                                text = "No hay gastos en este alcance todavía.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            else -> gastos.forEach { gasto ->
+                                GastoRow(
+                                    gasto = gasto,
+                                    categoryName = categories.firstOrNull { it.id == gasto.categoria_id }?.name
+                                )
+                            }
+                        }
+
                         if (current.state == EstadoPresupuesto.ACTIVO) {
                             Row(
                                 modifier = Modifier
@@ -684,6 +773,28 @@ private fun BudgetDetailCategoryRow(detalle: DetallePresupuestoSalidaResponse, m
                 color = if (isExceeded) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+// Una fila de la lista de gastos del presupuesto: categoría + fecha a la
+// izquierda, monto en rojo a la derecha, comentario (si hay) debajo.
+@Composable
+private fun GastoRow(gasto: TransaccionResponse, categoryName: String?, modifier: Modifier = Modifier) {
+    val monto = gasto.monto_transaccion.toDoubleOrNull() ?: 0.0
+    val title = gasto.comentario_transaccion?.takeIf { it.isNotBlank() } ?: (categoryName ?: "Gasto")
+    val subtitle = if (categoryName != null) "$categoryName • ${formatShortDate(gasto.fecha_registro_transaccion)}" else formatShortDate(gasto.fecha_registro_transaccion)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(text = "-" + formatCurrency(monto), color = FinTrackRed, fontWeight = FontWeight.Bold)
     }
 }
 
