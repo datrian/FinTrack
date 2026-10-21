@@ -25,7 +25,8 @@ data class CrearTransaccionRequest(
 data class TransaccionResponse(
     val id_transaccion: String,
     val cuenta_id: String,
-    val tipo_transaccion: TipoTransaccion,
+    // null si es un tipo que la app no conoce (Gson no falla, deja null).
+    val tipo_transaccion: TipoTransaccion?,
     val cuenta_destino_id: String?,
     val categoria_id: String?,
     val subcategoria_id: String?,

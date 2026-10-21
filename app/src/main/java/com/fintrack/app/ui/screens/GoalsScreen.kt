@@ -64,8 +64,10 @@ import com.fintrack.app.data.remote.MetaResponse
 import com.fintrack.app.data.remote.ResumenCuentaMetaResponse
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.parseApiErrorMessage
+import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
+import com.fintrack.app.ui.components.LoadMoreButton
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.components.formatShortDate
@@ -114,6 +116,9 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
     var goals by remember { mutableStateOf<List<AppGoal>>(emptyList()) }
     var isLoadingGoals by remember { mutableStateOf(true) }
     var goalsError by remember { mutableStateOf<String?>(null) }
+    // El backend pagina de 20 en 20: "total" dice si hay más para "Cargar más".
+    var totalGoals by remember { mutableStateOf(0) }
+    var isLoadingMoreGoals by remember { mutableStateOf(false) }
 
     val loadGoals: () -> Unit = {
         scope.launch {
@@ -127,6 +132,7 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
                     estado = selectedFilter.estado
                 )
                 goals = response.metas.map { it.toAppGoal() }
+                totalGoals = response.total
             } catch (e: HttpException) {
                 goalsError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
             } catch (e: IOException) {
@@ -136,6 +142,25 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
             } finally {
                 isLoadingGoals = false
             }
+        }
+    }
+
+    // Trae la siguiente página y la agrega al final (distinctBy evita
+    // duplicados si se creó una meta desde que se cargó la lista).
+    val loadMoreGoals: () -> Unit = {
+        scope.launch {
+            isLoadingMoreGoals = true
+            runAuthenticatedCall(context, onError = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }) { auth ->
+                RetrofitClient.metaApi.obtenerMetas(
+                    authorization = auth,
+                    estado = selectedFilter.estado,
+                    offset = goals.size
+                )
+            }?.let { response ->
+                goals = (goals + response.metas.map { it.toAppGoal() }).distinctBy { it.id }
+                totalGoals = response.total
+            }
+            isLoadingMoreGoals = false
         }
     }
 
@@ -203,6 +228,7 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
             onCreated = { newGoal ->
                 if (selectedFilter.estado == newGoal.state) {
                     goals = listOf(newGoal) + goals
+                    totalGoals += 1
                 }
                 isAddingGoal = false
             }
@@ -291,6 +317,16 @@ fun GoalsScreen(onOpenProfile: () -> Unit = {}) {
                             goal = goal,
                             accountName = accounts.firstOrNull { it.id_cuenta == goal.accountId }?.nombre_cuenta,
                             onClick = { selectedGoalId = goal.id }
+                        )
+                    }
+                }
+                if (goals.size < totalGoals) {
+                    item {
+                        LoadMoreButton(
+                            remaining = totalGoals - goals.size,
+                            isLoading = isLoadingMoreGoals,
+                            onClick = loadMoreGoals,
+                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
                 }
@@ -437,6 +473,8 @@ private fun GoalDetailDialog(
     var asignaciones by remember { mutableStateOf<List<AsignacionResponse>>(emptyList()) }
     var isLoadingAsignaciones by remember { mutableStateOf(true) }
     var asignacionesError by remember { mutableStateOf<String?>(null) }
+    var totalAsignaciones by remember { mutableStateOf(0) }
+    var isLoadingMoreAsignaciones by remember { mutableStateOf(false) }
     var isAddingAsignacion by remember { mutableStateOf(false) }
 
     var pendingAccionCierre by remember { mutableStateOf<AccionCierre?>(null) }
@@ -475,7 +513,9 @@ private fun GoalDetailDialog(
         try {
             val token = SessionManager.getAccessToken(context)
                 ?: throw IllegalStateException("No hay sesión activa")
-            asignaciones = RetrofitClient.metaApi.obtenerAsignaciones("Bearer $token", goalId).asignaciones
+            val response = RetrofitClient.metaApi.obtenerAsignaciones("Bearer $token", goalId)
+            asignaciones = response.asignaciones
+            totalAsignaciones = response.total
         } catch (e: HttpException) {
             asignacionesError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
         } catch (e: IOException) {
@@ -484,6 +524,20 @@ private fun GoalDetailDialog(
             asignacionesError = "Tu sesión expiró. Vuelve a iniciar sesión."
         } finally {
             isLoadingAsignaciones = false
+        }
+    }
+
+    // Siguiente página del historial de aportes/retiros, agregada al final.
+    val loadMoreAsignaciones: () -> Unit = {
+        scope.launch {
+            isLoadingMoreAsignaciones = true
+            runAuthenticatedCall(context, onError = { asignacionesError = it }) { auth ->
+                RetrofitClient.metaApi.obtenerAsignaciones(auth, goalId, offset = asignaciones.size)
+            }?.let { response ->
+                asignaciones = (asignaciones + response.asignaciones).distinctBy { it.id_asignacion }
+                totalAsignaciones = response.total
+            }
+            isLoadingMoreAsignaciones = false
         }
     }
 
@@ -498,6 +552,7 @@ private fun GoalDetailDialog(
             onDismiss = { isAddingAsignacion = false },
             onCreated = { newAsignacion ->
                 asignaciones = listOf(newAsignacion) + asignaciones
+                totalAsignaciones += 1
                 isAddingAsignacion = false
                 // El aporte/retiro cambia monto actual, avance y posiblemente
                 // el estado de la meta (ej. pasa a ALCANZADA): se vuelve a
@@ -693,8 +748,17 @@ private fun GoalDetailDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                                else -> asignaciones.forEach { asignacion ->
-                                    AsignacionRow(asignacion)
+                                else -> {
+                                    asignaciones.forEach { asignacion ->
+                                        AsignacionRow(asignacion)
+                                    }
+                                    if (asignaciones.size < totalAsignaciones) {
+                                        LoadMoreButton(
+                                            remaining = totalAsignaciones - asignaciones.size,
+                                            isLoading = isLoadingMoreAsignaciones,
+                                            onClick = loadMoreAsignaciones
+                                        )
+                                    }
                                 }
                             }
 

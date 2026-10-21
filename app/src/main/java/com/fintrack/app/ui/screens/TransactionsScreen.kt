@@ -50,7 +50,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.AppTransaction
+import com.fintrack.app.data.model.FlujoDinero
 import com.fintrack.app.data.model.TipoTransaccion
+import com.fintrack.app.data.model.labelOrGeneric
 import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionSubcategory
 import com.fintrack.app.data.remote.CategoriaResponse
@@ -62,6 +64,7 @@ import com.fintrack.app.data.remote.TransaccionResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackTopBar
+import com.fintrack.app.ui.components.LoadMoreButton
 import com.fintrack.app.ui.components.amountColor
 import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.components.formatShortDate
@@ -117,6 +120,10 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
     var transactions by remember { mutableStateOf<List<AppTransaction>>(emptyList()) }
     var isLoadingTransactions by remember { mutableStateOf(true) }
     var transactionsError by remember { mutableStateOf<String?>(null) }
+    // El backend pagina de 20 en 20: "total" dice cuántas hay en total para
+    // saber si mostrar "Cargar más".
+    var totalTransactions by remember { mutableStateOf(0) }
+    var isLoadingMoreTransactions by remember { mutableStateOf(false) }
 
     val loadTransactions: () -> Unit = {
         scope.launch {
@@ -130,6 +137,7 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                     tipoTransaccion = selectedFilter.tipo
                 )
                 transactions = response.transacciones.map { it.toAppTransaction() }
+                totalTransactions = response.total
             } catch (e: HttpException) {
                 transactionsError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
             } catch (e: IOException) {
@@ -139,6 +147,26 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
             } finally {
                 isLoadingTransactions = false
             }
+        }
+    }
+
+    // Trae la siguiente página y la agrega al final. distinctBy evita
+    // duplicados si se creó una transacción nueva desde que se cargó la lista
+    // (eso recorre los offsets del backend).
+    val loadMoreTransactions: () -> Unit = {
+        scope.launch {
+            isLoadingMoreTransactions = true
+            runAuthenticatedCall(context, onError = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }) { auth ->
+                RetrofitClient.transaccionApi.obtenerTransacciones(
+                    authorization = auth,
+                    tipoTransaccion = selectedFilter.tipo,
+                    offset = transactions.size
+                )
+            }?.let { response ->
+                transactions = (transactions + response.transacciones.map { it.toAppTransaction() }).distinctBy { it.id }
+                totalTransactions = response.total
+            }
+            isLoadingMoreTransactions = false
         }
     }
 
@@ -201,6 +229,7 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
             onCreated = { newTransaction ->
                 if (selectedFilter.tipo == null || selectedFilter.tipo == newTransaction.type) {
                     transactions = listOf(newTransaction) + transactions
+                    totalTransactions += 1
                 }
                 isAddingTransaction = false
             }
@@ -288,6 +317,16 @@ fun TransactionsScreen(onOpenProfile: () -> Unit = {}) {
                             transaction = transaction,
                             categoryName = categories.firstOrNull { it.id == transaction.categoryId }?.name,
                             onClick = { selectedTransactionId = transaction.id }
+                        )
+                    }
+                }
+                if (transactions.size < totalTransactions) {
+                    item {
+                        LoadMoreButton(
+                            remaining = totalTransactions - transactions.size,
+                            isLoading = isLoadingMoreTransactions,
+                            onClick = loadMoreTransactions,
+                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
                 }
@@ -381,16 +420,15 @@ private fun TransactionRow(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val (icon, iconBackground) = when (transaction.type) {
-        TipoTransaccion.INGRESO -> Icons.Filled.ArrowDownward to FinTrackGreen.copy(alpha = 0.15f)
-        TipoTransaccion.GASTO -> Icons.Filled.ArrowUpward to FinTrackNavy.copy(alpha = 0.1f)
-        TipoTransaccion.TRANSFERENCIA -> Icons.Filled.SwapHoriz to FinTrackPurple.copy(alpha = 0.12f)
+    // Ícono, signo y color dependen de si el dinero entra, sale o solo se
+    // mueve entre cuentas propias (o el tipo es desconocido: sin signo).
+    val flujo = transaction.type?.flujo ?: FlujoDinero.NEUTRO
+    val (icon, iconBackground) = when (flujo) {
+        FlujoDinero.ENTRADA -> Icons.Filled.ArrowDownward to FinTrackGreen.copy(alpha = 0.15f)
+        FlujoDinero.SALIDA -> Icons.Filled.ArrowUpward to FinTrackNavy.copy(alpha = 0.1f)
+        FlujoDinero.NEUTRO -> Icons.Filled.SwapHoriz to FinTrackPurple.copy(alpha = 0.12f)
     }
-    val title = transaction.comment?.takeIf { it.isNotBlank() } ?: when (transaction.type) {
-        TipoTransaccion.INGRESO -> "Ingreso"
-        TipoTransaccion.GASTO -> "Gasto"
-        TipoTransaccion.TRANSFERENCIA -> "Transferencia"
-    }
+    val title = transaction.comment?.takeIf { it.isNotBlank() } ?: transaction.type.labelOrGeneric()
     val subtitle = if (categoryName != null) "$categoryName • ${formatShortDate(transaction.date)}" else formatShortDate(transaction.date)
 
     Row(
@@ -416,18 +454,18 @@ private fun TransactionRow(
                 Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        when (transaction.type) {
-            TipoTransaccion.TRANSFERENCIA -> Text(
+        when (flujo) {
+            FlujoDinero.NEUTRO -> Text(
                 text = formatCurrency(transaction.amount),
                 color = FinTrackNavy,
                 fontWeight = FontWeight.Bold
             )
-            TipoTransaccion.INGRESO -> Text(
+            FlujoDinero.ENTRADA -> Text(
                 text = "+" + formatCurrency(transaction.amount),
                 color = amountColor(true),
                 fontWeight = FontWeight.Bold
             )
-            TipoTransaccion.GASTO -> Text(
+            FlujoDinero.SALIDA -> Text(
                 text = "-" + formatCurrency(transaction.amount),
                 color = amountColor(false),
                 fontWeight = FontWeight.Bold
@@ -492,11 +530,7 @@ private fun TransactionDetailDialog(
                 transaction != null -> {
                     val current = transaction!!
                     Column {
-                        DetailRow("Tipo", when (current.type) {
-                            TipoTransaccion.INGRESO -> "Ingreso"
-                            TipoTransaccion.GASTO -> "Gasto"
-                            TipoTransaccion.TRANSFERENCIA -> "Transferencia"
-                        })
+                        DetailRow("Tipo", current.type.labelOrGeneric())
                         DetailRow("Monto", formatCurrency(current.amount))
                         DetailRow("Cuenta", accounts.firstOrNull { it.id_cuenta == current.accountId }?.nombre_cuenta ?: current.accountId)
                         current.destinationAccountId?.let { destinationId ->
@@ -644,13 +678,9 @@ private fun AddTransactionDialog(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TipoTransaccion.entries.forEach { tipo ->
+                    TipoTransaccion.creatable.forEach { tipo ->
                         SelectableChip(
-                            label = when (tipo) {
-                                TipoTransaccion.INGRESO -> "Ingreso"
-                                TipoTransaccion.GASTO -> "Gasto"
-                                TipoTransaccion.TRANSFERENCIA -> "Transferencia"
-                            },
+                            label = tipo.label,
                             selected = tipo == selectedType,
                             onClick = {
                                 selectedType = tipo

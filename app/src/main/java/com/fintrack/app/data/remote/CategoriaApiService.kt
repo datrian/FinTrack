@@ -7,7 +7,9 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 
-data class CrearCategoriaRequest(val nombre_categoria: String)
+// "grupo_id" es obligatorio: el grupo de presupuesto (Deudas, Gastos fijos,
+// Gustos o Ahorro) en el que cuentan los gastos de la categoría.
+data class CrearCategoriaRequest(val nombre_categoria: String, val grupo_id: String)
 
 data class RenombrarCategoriaRequest(val nombre_categoria: String)
 

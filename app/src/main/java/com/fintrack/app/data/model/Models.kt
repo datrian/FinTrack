@@ -25,8 +25,35 @@ data class Account(
     val balance: Double
 )
 
-// Los 3 tipos de movimiento que acepta el backend (POST/GET /api/v1/transacciones).
-enum class TipoTransaccion { INGRESO, GASTO, TRANSFERENCIA }
+// Hacia dónde mueve el dinero un tipo de transacción: entra a las cuentas del
+// usuario, sale de ellas, o solo se mueve entre cuentas propias.
+enum class FlujoDinero { ENTRADA, SALIDA, NEUTRO }
+
+// Los tipos de movimiento que maneja el backend (GET /api/v1/transacciones).
+// Los nombres de las constantes deben coincidir con los valores de la API.
+// Si el backend agrega un tipo nuevo que no está aquí, Gson lo deja en null:
+// por eso el tipo de una transacción recibida es nullable.
+enum class TipoTransaccion(val label: String, val flujo: FlujoDinero) {
+    INGRESO("Ingreso", FlujoDinero.ENTRADA),
+    GASTO("Gasto", FlujoDinero.SALIDA),
+    TRANSFERENCIA("Transferencia", FlujoDinero.NEUTRO),
+    INGRESO_RESERVADO("Ingreso reservado", FlujoDinero.ENTRADA),
+    PAGO_DEUDA("Pago de deuda", FlujoDinero.SALIDA),
+    PRESTAMO_RECIBIDO("Préstamo recibido", FlujoDinero.ENTRADA),
+    // Dinero que el usuario adelanta y que después le van a reembolsar.
+    ANTICIPO_REEMBOLSABLE("Anticipo reembolsable", FlujoDinero.SALIDA),
+    REEMBOLSO("Reembolso", FlujoDinero.ENTRADA),
+    DEVOLUCION_GASTO("Devolución de gasto", FlujoDinero.ENTRADA);
+
+    companion object {
+        // Los tipos que se pueden registrar desde el formulario de la app.
+        val creatable = listOf(INGRESO, GASTO, TRANSFERENCIA)
+    }
+}
+
+// Texto para mostrar el tipo de una transacción, incluso si es uno que la app
+// todavía no conoce (null).
+fun TipoTransaccion?.labelOrGeneric(): String = this?.label ?: "Movimiento"
 
 // Un movimiento real del usuario, traído de GET /api/v1/transacciones. El
 // backend no guarda título ni ícono: "comment" (si existe) hace de título, y
@@ -34,7 +61,8 @@ enum class TipoTransaccion { INGRESO, GASTO, TRANSFERENCIA }
 // cargadas de categorías/subcategorías.
 data class AppTransaction(
     val id: String,
-    val type: TipoTransaccion,
+    // null si el backend mandó un tipo que la app todavía no conoce.
+    val type: TipoTransaccion?,
     val accountId: String,
     val destinationAccountId: String?,
     val categoryId: String?,

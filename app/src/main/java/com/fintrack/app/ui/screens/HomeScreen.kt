@@ -112,8 +112,8 @@ internal fun TransaccionResponse.yearMonth(): YearMonth? {
 private fun TransaccionResponse.amount(): Double = monto_transaccion.toDoubleOrNull() ?: 0.0
 
 // Totales del resumen mensual de Inicio, calculados a partir de las
-// transacciones. Las transferencias no cuentan: solo mueven dinero entre
-// cuentas propias.
+// transacciones. Solo cuentan los ingresos y gastos normales: transferencias,
+// préstamos, pagos de deuda, reembolsos, etc. no son ingreso ni gasto del mes.
 internal data class HomeTotals(
     val monthIncome: Double,   // ingresos del mes actual
     val monthExpenses: Double  // gastos del mes actual
@@ -127,7 +127,7 @@ internal fun List<TransaccionResponse>.toHomeTotals(month: YearMonth): HomeTotal
         when (t.tipo_transaccion) {
             TipoTransaccion.INGRESO -> monthIncome += t.amount()
             TipoTransaccion.GASTO -> monthExpenses += t.amount()
-            TipoTransaccion.TRANSFERENCIA -> Unit
+            else -> Unit
         }
     }
     return HomeTotals(monthIncome, monthExpenses)

@@ -145,6 +145,7 @@ fun CategoriesScreen(onBack: () -> Unit) {
 
     if (isAddingCategory) {
         AddCategoryDialog(
+            groups = groups,
             onDismiss = { isAddingCategory = false },
             // Se ejecuta cuando el POST al backend tuvo éxito.
             onCreated = { newCategory ->
@@ -715,6 +716,7 @@ private fun AddCategoryButton(onClick: () -> Unit, modifier: Modifier = Modifier
 // si tuvo éxito, le pasa la categoría ya creada a CategoriesScreen.
 @Composable
 private fun AddCategoryDialog(
+    groups: List<GrupoResponse>,
     onDismiss: () -> Unit,
     onCreated: (TransactionCategory) -> Unit
 ) {
@@ -722,11 +724,12 @@ private fun AddCategoryDialog(
     val scope = rememberCoroutineScope()
 
     var name by remember { mutableStateOf("") }
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // El backend exige entre 2 y 100 caracteres.
-    val isValid = name.trim().length in 2..100
+    // El backend exige entre 2 y 100 caracteres y un grupo.
+    val isValid = name.trim().length in 2..100 && selectedGroupId != null
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -748,6 +751,32 @@ private fun AddCategoryDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+                Text(
+                    text = "Grupo de presupuesto",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+                Text(
+                    text = "Los gastos de esta categoría cuentan en el presupuesto del grupo que elijas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                if (groups.isEmpty()) {
+                    Text(
+                        text = "No se pudieron cargar los grupos. Cierra y vuelve a abrir Categorías.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FinTrackRed
+                    )
+                } else {
+                    GroupOptions(
+                        groups = groups,
+                        selectedGroupId = selectedGroupId,
+                        enabled = !isSaving,
+                        onSelect = { selectedGroupId = it; errorMessage = null }
+                    )
+                }
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage.orEmpty(),
@@ -761,6 +790,7 @@ private fun AddCategoryDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val groupId = selectedGroupId ?: return@Button
                     scope.launch {
                         isSaving = true
                         errorMessage = null
@@ -769,7 +799,7 @@ private fun AddCategoryDialog(
                                 ?: throw IllegalStateException("No hay sesión activa")
                             val created = RetrofitClient.categoriaApi.crearCategoria(
                                 authorization = "Bearer $token",
-                                request = CrearCategoriaRequest(nombre_categoria = name.trim())
+                                request = CrearCategoriaRequest(nombre_categoria = name.trim(), grupo_id = groupId)
                             )
                             onCreated(created.toTransactionCategory())
                         } catch (e: HttpException) {
@@ -1084,29 +1114,12 @@ private fun ChangeCategoryGroupDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                groups.forEach { group ->
-                    val isSelected = group.id_grupo == selectedGroupId
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) FinTrackNavy.copy(alpha = 0.1f) else androidx.compose.ui.graphics.Color.Transparent)
-                            .clickable(enabled = !isSaving) { selectedGroupId = group.id_grupo; errorMessage = null }
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = group.nombre_grupo,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (isSelected) FinTrackNavy else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (isSelected) {
-                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Seleccionado", tint = FinTrackNavy)
-                        }
-                    }
-                }
+                GroupOptions(
+                    groups = groups,
+                    selectedGroupId = selectedGroupId,
+                    enabled = !isSaving,
+                    onSelect = { selectedGroupId = it; errorMessage = null }
+                )
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage.orEmpty(),
@@ -1148,4 +1161,38 @@ private fun ChangeCategoryGroupDialog(
             }
         }
     )
+}
+
+// Lista de grupos de presupuesto para elegir uno; el elegido se resalta con
+// una palomita. La usan "Nueva categoría" y "Cambiar grupo".
+@Composable
+private fun GroupOptions(
+    groups: List<GrupoResponse>,
+    selectedGroupId: String?,
+    enabled: Boolean,
+    onSelect: (String) -> Unit
+) {
+    groups.forEach { group ->
+        val isSelected = group.id_grupo == selectedGroupId
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (isSelected) FinTrackNavy.copy(alpha = 0.1f) else androidx.compose.ui.graphics.Color.Transparent)
+                .clickable(enabled = enabled) { onSelect(group.id_grupo) }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = group.nombre_grupo,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isSelected) FinTrackNavy else MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.weight(1f)
+            )
+            if (isSelected) {
+                Icon(imageVector = Icons.Filled.Check, contentDescription = "Seleccionado", tint = FinTrackNavy)
+            }
+        }
+    }
 }

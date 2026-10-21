@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -344,6 +345,28 @@ fun ProfileAvatar(initials: String, userId: String?, modifier: Modifier = Modifi
             )
         } else {
             Text(text = initials, color = FinTrackNavy, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/**
+ * Botón "Cargar más" al final de una lista paginada del backend: muestra
+ * cuántos registros faltan y un spinner mientras se trae la siguiente página.
+ */
+@Composable
+fun LoadMoreButton(remaining: Int, isLoading: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = !isLoading, onClick = onClick)
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+        } else {
+            Text(text = "Cargar más ($remaining restantes)", color = FinTrackNavy, fontWeight = FontWeight.SemiBold)
         }
     }
 }
