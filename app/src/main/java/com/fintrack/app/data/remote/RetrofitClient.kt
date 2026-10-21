@@ -1,5 +1,6 @@
 package com.fintrack.app.data.remote
 
+import com.fintrack.app.data.local.SessionEvents
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -11,6 +12,9 @@ object RetrofitClient {
     private const val BASE_URL = "https://fintrack-2hqg.onrender.com/"
 
     private val okHttpClient = OkHttpClient.Builder()
+        // Si el backend responde 401 a una petición con token, la sesión venció:
+        // FinTrackApp escucha SessionEvents y regresa al login.
+        .addInterceptor(SessionExpiredInterceptor(SessionEvents::notifySessionExpired))
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
         // El plan gratuito de Render "duerme" el backend tras inactividad: la
         // primera petición puede tardar bastante más que el timeout por

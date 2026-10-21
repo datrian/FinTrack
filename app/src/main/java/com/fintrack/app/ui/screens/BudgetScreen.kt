@@ -1,5 +1,6 @@
 package com.fintrack.app.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,72 +57,134 @@ import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.AccionCierrePresupuesto
 import com.fintrack.app.data.model.AppBudget
 import com.fintrack.app.data.model.EstadoPresupuesto
-import com.fintrack.app.data.model.TransactionCategory
-import com.fintrack.app.data.remote.CategoriaResponse
-import com.fintrack.app.data.remote.CerrarPresupuestoRequest
+import com.fintrack.app.data.remote.ActualizarPresupuestoRequest
 import com.fintrack.app.data.remote.CrearPresupuestoRequest
-import com.fintrack.app.data.remote.DetallePresupuestoCrearRequest
-import com.fintrack.app.data.remote.DetallePresupuestoSalidaResponse
-import com.fintrack.app.data.remote.PresupuestoResumenResponse
+import com.fintrack.app.data.remote.GrupoDistribucionRequest
+import com.fintrack.app.data.remote.GrupoResponse
+import com.fintrack.app.data.remote.PeriodoGrupoResponse
+import com.fintrack.app.data.remote.PeriodoResponse
 import com.fintrack.app.data.remote.RetrofitClient
-import com.fintrack.app.data.remote.TransaccionResponse
+import com.fintrack.app.data.remote.TipoPeriodo
 import com.fintrack.app.data.remote.parseApiErrorMessage
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.components.formatShortDate
-import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
 import java.io.IOException
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.format.TextStyle
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
-// Los 4 filtros disponibles sobre la lista de presupuestos. "estado" se
-// manda tal cual al backend: TODOS no es un estado real, es un valor
-// especial que el GET acepta para no filtrar.
-private enum class BudgetFilter(val label: String, val estado: String) {
-    ACTIVOS("Activos", "ACTIVO"),
-    FINALIZADOS("Finalizados", "FINALIZADO"),
-    CANCELADOS("Cancelados", "CANCELADO"),
-    TODOS("Todos", "TODOS")
+// Los 4 filtros disponibles sobre la lista de presupuestos. El backend
+// devuelve todos los estados juntos, así que el filtro se aplica en la app;
+// "estado" null significa no filtrar.
+private enum class BudgetFilter(val label: String, val estado: EstadoPresupuesto?) {
+    ACTIVOS("Activos", EstadoPresupuesto.ACTIVO),
+    FINALIZADOS("Finalizados", EstadoPresupuesto.FINALIZADO),
+    CANCELADOS("Cancelados", EstadoPresupuesto.CANCELADO),
+    TODOS("Todos", null)
 }
 
-// Los 3 alcances disponibles sobre la lista de gastos de un presupuesto
-// (GET /api/v1/presupuestos/{id}/gastos): todos, solo los de categorías
-// presupuestadas, o solo los que quedaron fuera del presupuesto.
-private enum class GastoScope(val label: String, val alcance: String) {
-    TODOS("Todos", "TODOS"),
-    PRESUPUESTADOS("Presupuestados", "PRESUPUESTADOS"),
-    NO_PRESUPUESTADOS("No presupuestados", "NO_PRESUPUESTADOS")
+private const val SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Vuelve a iniciar sesión."
+
+// Hace una llamada autenticada al backend y convierte los errores en un
+// mensaje para la UI (vía onError), devolviendo null si falló. Una respuesta
+// con un formato inesperado (RuntimeException de Gson) también se reporta
+// como error en vez de cerrar la app.
+private suspend fun <T> runBudgetCall(
+    context: Context,
+    onError: (String) -> Unit,
+    block: suspend (authorization: String) -> T
+): T? {
+    val token = SessionManager.getAccessToken(context)
+    if (token == null) {
+        onError(SESSION_EXPIRED_MESSAGE)
+        return null
+    }
+    return try {
+        block("Bearer $token")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: HttpException) {
+        onError(if (e.code() == 401) SESSION_EXPIRED_MESSAGE else e.parseApiErrorMessage())
+        null
+    } catch (e: IOException) {
+        onError("No se pudo conectar con el servidor. Revisa tu conexión.")
+        null
+    } catch (e: RuntimeException) {
+        onError("El servidor respondió algo inesperado. Intenta de nuevo más tarde.")
+        null
+    }
 }
 
-private fun PresupuestoResumenResponse.toAppBudget() = AppBudget(
-    id = id_presupuesto,
-    startDate = fecha_inicio_presupuesto,
-    endDate = fecha_fin_presupuesto,
-    state = estado_presupuesto,
-    limitAmount = monto_limite_presupuesto.toDoubleOrNull() ?: 0.0,
-    consumedAmount = monto_consumido_presupuesto.toDoubleOrNull() ?: 0.0,
-    remainingAmount = monto_restante_presupuesto.toDoubleOrNull() ?: 0.0,
-    exceededAmount = monto_excedido_presupuesto.toDoubleOrNull() ?: 0.0,
-    consumedPercent = porcentaje_consumido_presupuesto.toDoubleOrNull() ?: 0.0,
-    indicator = indicador_presupuesto,
-    isOverdue = periodo_vencido
+// Los campos de la respuesta pueden faltar (ver PeriodoResponse): se usan
+// valores por defecto en vez de dejar que la app se cierre.
+private fun PeriodoResponse.toAppBudget() = AppBudget(
+    id = id_periodo.orEmpty(),
+    code = codigo_periodo.orEmpty(),
+    startDate = fecha_inicio_periodo.orEmpty(),
+    endDate = fecha_fin_periodo.orEmpty(),
+    state = estado_periodo ?: EstadoPresupuesto.ACTIVO,
+    plannedAmount = monto_total_presupuesto?.toDoubleOrNull() ?: 0.0,
+    limitAmount = monto_presupuesto_periodo?.toDoubleOrNull() ?: 0.0,
+    consumedAmount = aplicado_total_periodo?.toDoubleOrNull() ?: 0.0,
+    remainingAmount = monto_restante_periodo?.toDoubleOrNull() ?: 0.0,
+    exceededAmount = monto_excedido_periodo?.toDoubleOrNull() ?: 0.0,
+    consumedPercent = porcentaje_consumido_periodo?.toDoubleOrNull() ?: 0.0,
+    indicator = estado_consumo_periodo.orEmpty(),
+    isOverdue = periodo_vencido ?: false
 )
 
-private fun CategoriaResponse.toTransactionCategory() = TransactionCategory(
-    id = id_categoria,
-    name = nombre_categoria
-)
+private fun EstadoPresupuesto.label() = when (this) {
+    EstadoPresupuesto.ACTIVO -> "Activo"
+    EstadoPresupuesto.FINALIZADO -> "Finalizado"
+    EstadoPresupuesto.CANCELADO -> "Cancelado"
+}
+
+private fun TipoPeriodo.label() = when (this) {
+    TipoPeriodo.SEMANAL -> "Semanal"
+    TipoPeriodo.QUINCENAL -> "Quincenal"
+    TipoPeriodo.MENSUAL -> "Mensual"
+    TipoPeriodo.PERSONALIZADO -> "Personalizado"
+}
+
+// Fecha fin automática según el tipo de período; null en PERSONALIZADO,
+// donde la elige el usuario.
+internal fun TipoPeriodo.endDateFor(start: LocalDate): LocalDate? = when (this) {
+    TipoPeriodo.SEMANAL -> start.plusDays(6)
+    TipoPeriodo.QUINCENAL -> start.plusDays(14)
+    TipoPeriodo.MENSUAL -> start.plusMonths(1).minusDays(1)
+    TipoPeriodo.PERSONALIZADO -> null
+}
+
+// Código sugerido para el período, con el formato que ya usa el backend
+// ("OCT-2026"). Los períodos que no son mensuales llevan también el día
+// ("19-OCT-2026") para no repetirse dentro del mismo mes.
+internal fun suggestedPeriodCode(tipo: TipoPeriodo, start: LocalDate): String {
+    val month = start.month.getDisplayName(TextStyle.SHORT, Locale("es", "ES"))
+        .replace(".", "")
+        .uppercase(Locale("es", "ES"))
+    val base = "$month-${start.year}"
+    return if (tipo == TipoPeriodo.MENSUAL) base else "${start.dayOfMonth}-$base"
+}
+
+private fun formatAmountForApi(amount: Double) = String.format(Locale.US, "%.2f", amount)
+
+// Una fila del editor de porcentajes por grupo.
+private data class GroupShare(val id: String, val name: String)
 
 // Pantalla de Presupuestos: presupuestos reales del usuario, traídos de
 // GET /api/v1/presupuestos, con filtro por estado y un botón para crear uno
-// nuevo (POST /api/v1/presupuestos). Un presupuesto es un límite total de
-// gasto por período, repartido por porcentaje entre categorías reales.
+// nuevo (POST /api/v1/presupuestos). Un presupuesto es un monto total por
+// período, repartido por porcentaje entre los 4 grupos de gasto.
 @Composable
 fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
     val context = LocalContext.current
@@ -128,102 +192,70 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
 
     var selectedFilter by remember { mutableStateOf(BudgetFilter.ACTIVOS) }
 
-    var budgets by remember { mutableStateOf<List<AppBudget>>(emptyList()) }
+    var allBudgets by remember { mutableStateOf<List<AppBudget>>(emptyList()) }
     var isLoadingBudgets by remember { mutableStateOf(true) }
     var budgetsError by remember { mutableStateOf<String?>(null) }
+    val budgets = allBudgets.filter { selectedFilter.estado == null || it.state == selectedFilter.estado }
 
     val loadBudgets: () -> Unit = {
         scope.launch {
             isLoadingBudgets = true
             budgetsError = null
-            try {
-                val token = SessionManager.getAccessToken(context)
-                    ?: throw IllegalStateException("No hay sesión activa")
-                val response = RetrofitClient.presupuestoApi.obtenerPresupuestos(
-                    authorization = "Bearer $token",
-                    estado = selectedFilter.estado
-                )
-                budgets = response.presupuestos.map { it.toAppBudget() }
-            } catch (e: HttpException) {
-                budgetsError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-            } catch (e: IOException) {
-                budgetsError = "No se pudo conectar con el servidor. Revisa tu conexión."
-            } catch (e: IllegalStateException) {
-                budgetsError = "Tu sesión expiró. Vuelve a iniciar sesión."
-            } finally {
-                isLoadingBudgets = false
+            runBudgetCall(context, onError = { budgetsError = it }) { auth ->
+                RetrofitClient.presupuestoApi.obtenerPresupuestos(auth)
+            }?.let { response ->
+                allBudgets = response.presupuestos.orEmpty().map { it.toAppBudget() }
             }
+            isLoadingBudgets = false
         }
     }
 
-    // Se vuelve a pedir cada vez que cambia el filtro (el backend filtra con
-    // el query param "estado", no se filtra en el cliente).
-    LaunchedEffect(selectedFilter) { loadBudgets() }
+    LaunchedEffect(Unit) { loadBudgets() }
 
-    // Categorías del usuario, necesarias para el formulario de "Nuevo
-    // presupuesto" (cada detalle del presupuesto asigna un % a una
-    // categoría real). Se traen una sola vez al entrar.
-    var categories by remember { mutableStateOf<List<TransactionCategory>>(emptyList()) }
-    var isLoadingCategories by remember { mutableStateOf(true) }
-    var categoriesError by remember { mutableStateOf<String?>(null) }
+    // Catálogo de grupos (Deudas, Gastos fijos, ...), necesario para el
+    // formulario de "Nuevo presupuesto". Se trae una sola vez al entrar.
+    var groups by remember { mutableStateOf<List<GrupoResponse>>(emptyList()) }
+    var isLoadingGroups by remember { mutableStateOf(true) }
+    var groupsError by remember { mutableStateOf<String?>(null) }
 
-    val loadCategories: () -> Unit = {
+    val loadGroups: () -> Unit = {
         scope.launch {
-            isLoadingCategories = true
-            categoriesError = null
-            try {
-                val token = SessionManager.getAccessToken(context)
-                    ?: throw IllegalStateException("No hay sesión activa")
-                categories = RetrofitClient.categoriaApi.obtenerCategorias("Bearer $token").categorias.map { it.toTransactionCategory() }
-            } catch (e: HttpException) {
-                categoriesError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-            } catch (e: IOException) {
-                categoriesError = "No se pudo conectar con el servidor. Revisa tu conexión."
-            } catch (e: IllegalStateException) {
-                categoriesError = "Tu sesión expiró. Vuelve a iniciar sesión."
-            } finally {
-                isLoadingCategories = false
+            isLoadingGroups = true
+            groupsError = null
+            runBudgetCall(context, onError = { groupsError = it }) { auth ->
+                RetrofitClient.presupuestoApi.obtenerGrupos(auth)
+            }?.let { response ->
+                groups = response.grupos.filter { it.es_activo_grupo }
             }
+            isLoadingGroups = false
         }
     }
 
-    LaunchedEffect(Unit) { loadCategories() }
+    LaunchedEffect(Unit) { loadGroups() }
 
     // Id del presupuesto cuyo detalle se está viendo (tap sobre una
-    // tarjeta). El diálogo pide el detalle con GET /api/v1/presupuestos/{id}
-    // (no reutiliza los datos ya cargados en la lista), que incluye el
-    // desglose por categoría.
+    // tarjeta). El diálogo pide el detalle con GET /api/v1/presupuestos/{id},
+    // que incluye el desglose por grupo.
     var selectedBudgetId by remember { mutableStateOf<String?>(null) }
     selectedBudgetId?.let { budgetId ->
         BudgetDetailDialog(
             budgetId = budgetId,
-            categories = categories,
             onDismiss = { selectedBudgetId = null },
-            onUpdated = { updated ->
-                // Si el estado del presupuesto ya no coincide con el filtro
-                // activo (ej. se finalizó/canceló estando en "Activos"),
-                // desaparece de la lista en vez de quedar mostrado con
-                // datos viejos.
-                budgets = if (selectedFilter.estado == "TODOS" || selectedFilter.estado == updated.state.name) {
-                    budgets.map { if (it.id == updated.id) updated else it }
-                } else {
-                    budgets.filterNot { it.id == updated.id }
-                }
-            }
+            // Tras editar, redistribuir o cerrar el presupuesto, la lista se
+            // vuelve a pedir para no mostrar datos viejos.
+            onChanged = loadBudgets
         )
     }
 
     var isAddingBudget by remember { mutableStateOf(false) }
     if (isAddingBudget) {
         AddBudgetDialog(
-            categories = categories,
+            groups = groups,
             onDismiss = { isAddingBudget = false },
             // Se ejecuta cuando el POST al backend tuvo éxito.
-            onCreated = { newBudget ->
-                if (selectedFilter.estado == "TODOS" || selectedFilter.estado == newBudget.state.name) {
-                    budgets = listOf(newBudget) + budgets
-                }
+            onCreated = {
                 isAddingBudget = false
+                loadBudgets()
             }
         )
     }
@@ -254,7 +286,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
         }
 
         when {
-            isLoadingBudgets && budgets.isEmpty() -> {
+            isLoadingBudgets && allBudgets.isEmpty() -> {
                 item {
                     Column(
                         modifier = Modifier
@@ -266,7 +298,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
                     }
                 }
             }
-            budgetsError != null && budgets.isEmpty() -> {
+            budgetsError != null && allBudgets.isEmpty() -> {
                 item {
                     Column(
                         modifier = Modifier
@@ -319,28 +351,28 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .border(1.dp, FinTrackNavy, RoundedCornerShape(16.dp))
-                        .clickable(enabled = !isLoadingCategories) {
-                            if (categoriesError != null) loadCategories() else isAddingBudget = true
+                        .clickable(enabled = !isLoadingGroups) {
+                            if (groupsError != null) loadGroups() else isAddingBudget = true
                         }
                         .padding(vertical = 18.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isLoadingCategories) {
+                    if (isLoadingGroups) {
                         CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     } else {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = null, tint = FinTrackNavy)
                         Text(
-                            text = if (categoriesError != null) "Reintentar" else "Agregar presupuesto",
+                            text = if (groupsError != null) "Reintentar" else "Agregar presupuesto",
                             color = FinTrackNavy,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
                 }
-                if (categoriesError != null) {
+                if (groupsError != null) {
                     Text(
-                        text = categoriesError.orEmpty(),
+                        text = groupsError.orEmpty(),
                         color = FinTrackRed,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 8.dp)
@@ -389,17 +421,13 @@ private fun BudgetCard(budget: AppBudget, onClick: () -> Unit = {}, modifier: Mo
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = when (budget.state) {
-                    EstadoPresupuesto.ACTIVO -> "Activo"
-                    EstadoPresupuesto.FINALIZADO -> "Finalizado"
-                    EstadoPresupuesto.CANCELADO -> "Cancelado"
-                },
+                text = budget.state.label(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Text(
-            text = budget.indicator,
+            text = listOf(budget.code, budget.indicator).filter { it.isNotBlank() }.joinToString(" • "),
             style = MaterialTheme.typography.bodySmall,
             color = if (isExceeded) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -441,21 +469,19 @@ private fun BudgetCard(budget: AppBudget, onClick: () -> Unit = {}, modifier: Mo
 
 // Popup de detalle de un presupuesto. Pide el registro completo con
 // GET /api/v1/presupuestos/{id} (no reutiliza los datos ya cargados en la
-// lista), que incluye el desglose de consumo por cada categoría asignada.
+// lista), que incluye el desglose por grupo. Si el presupuesto está activo,
+// permite editarlo, cambiar su distribución, finalizarlo o cancelarlo.
 @Composable
 private fun BudgetDetailDialog(
     budgetId: String,
-    categories: List<TransactionCategory>,
     onDismiss: () -> Unit,
-    onUpdated: (AppBudget) -> Unit
+    onChanged: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var budget by remember { mutableStateOf<AppBudget?>(null) }
-    var consumidoPresupuestado by remember { mutableStateOf<Double?>(null) }
-    var consumidoNoPresupuestado by remember { mutableStateOf<Double?>(null) }
-    var detalles by remember { mutableStateOf<List<DetallePresupuestoSalidaResponse>>(emptyList()) }
+    var budgetGroups by remember { mutableStateOf<List<PeriodoGrupoResponse>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
 
@@ -463,63 +489,63 @@ private fun BudgetDetailDialog(
     var isClosing by remember { mutableStateOf(false) }
     var closeError by remember { mutableStateOf<String?>(null) }
 
-    var selectedGastoScope by remember { mutableStateOf(GastoScope.TODOS) }
-    var gastos by remember { mutableStateOf<List<TransaccionResponse>>(emptyList()) }
-    var isLoadingGastos by remember { mutableStateOf(true) }
-    var gastosError by remember { mutableStateOf<String?>(null) }
+    var isEditing by remember { mutableStateOf(false) }
+    var isEditingDistribution by remember { mutableStateOf(false) }
 
-    LaunchedEffect(budgetId) {
+    // Las operaciones del backend no documentan su respuesta, así que después
+    // de cada cambio se vuelve a pedir el detalle (y la lista, vía onChanged).
+    val loadDetail: () -> Unit = {
         scope.launch {
-            isLoading = true
+            isLoading = budget == null
             loadError = null
-            try {
-                val token = SessionManager.getAccessToken(context)
-                    ?: throw IllegalStateException("No hay sesión activa")
-                val response = RetrofitClient.presupuestoApi.obtenerPresupuesto("Bearer $token", budgetId)
-                budget = response.presupuesto.toAppBudget()
-                consumidoPresupuestado = response.monto_consumido_presupuestado.toDoubleOrNull()
-                consumidoNoPresupuestado = response.monto_consumido_no_presupuestado.toDoubleOrNull()
-                detalles = response.detalles
-            } catch (e: HttpException) {
-                loadError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-            } catch (e: IOException) {
-                loadError = "No se pudo conectar con el servidor. Revisa tu conexión."
-            } catch (e: IllegalStateException) {
-                loadError = "Tu sesión expiró. Vuelve a iniciar sesión."
-            } finally {
-                isLoading = false
+            runBudgetCall(context, onError = { loadError = it }) { auth ->
+                RetrofitClient.presupuestoApi.obtenerPresupuesto(auth, budgetId)
+            }?.let { response ->
+                val periodo = response.periodo
+                if (periodo == null) {
+                    loadError = "El servidor respondió algo inesperado. Intenta de nuevo más tarde."
+                } else {
+                    budget = periodo.toAppBudget()
+                    budgetGroups = response.grupos.orEmpty()
+                }
             }
+            isLoading = false
         }
     }
 
-    // Se vuelve a pedir cada vez que cambia el alcance (el backend filtra
-    // con el query param "alcance", no se filtra en el cliente).
-    LaunchedEffect(budgetId, selectedGastoScope) {
-        scope.launch {
-            isLoadingGastos = true
-            gastosError = null
-            try {
-                val token = SessionManager.getAccessToken(context)
-                    ?: throw IllegalStateException("No hay sesión activa")
-                gastos = RetrofitClient.presupuestoApi.obtenerGastosPresupuesto(
-                    authorization = "Bearer $token",
-                    idPresupuesto = budgetId,
-                    alcance = selectedGastoScope.alcance
-                ).gastos
-            } catch (e: HttpException) {
-                gastosError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-            } catch (e: IOException) {
-                gastosError = "No se pudo conectar con el servidor. Revisa tu conexión."
-            } catch (e: IllegalStateException) {
-                gastosError = "Tu sesión expiró. Vuelve a iniciar sesión."
-            } finally {
-                isLoadingGastos = false
+    LaunchedEffect(budgetId) { loadDetail() }
+
+    val afterChange: () -> Unit = {
+        loadDetail()
+        onChanged()
+    }
+
+    val currentBudget = budget
+    if (isEditing && currentBudget != null) {
+        EditBudgetDialog(
+            budget = currentBudget,
+            onDismiss = { isEditing = false },
+            onSaved = {
+                isEditing = false
+                afterChange()
             }
-        }
+        )
+    }
+
+    if (isEditingDistribution) {
+        EditDistributionDialog(
+            budgetId = budgetId,
+            groups = budgetGroups,
+            onDismiss = { isEditingDistribution = false },
+            onSaved = {
+                isEditingDistribution = false
+                afterChange()
+            }
+        )
     }
 
     // Confirmación antes de cerrar el presupuesto (acción irreversible):
-    // finalizarlo o cancelarlo con POST /api/v1/presupuestos/{id}/cierre.
+    // finalizarlo o cancelarlo.
     val accionPendiente = pendingAccionCierre
     if (accionPendiente != null) {
         AlertDialog(
@@ -545,32 +571,17 @@ private fun BudgetDetailDialog(
                         scope.launch {
                             isClosing = true
                             closeError = null
-                            try {
-                                val token = SessionManager.getAccessToken(context)
-                                    ?: throw IllegalStateException("No hay sesión activa")
-                                val response = RetrofitClient.presupuestoApi.cerrarPresupuesto(
-                                    authorization = "Bearer $token",
-                                    idPresupuesto = budgetId,
-                                    request = CerrarPresupuestoRequest(accion = accionPendiente)
-                                )
-                                budget = response.presupuesto.toAppBudget()
-                                consumidoPresupuestado = response.monto_consumido_presupuestado.toDoubleOrNull()
-                                consumidoNoPresupuestado = response.monto_consumido_no_presupuestado.toDoubleOrNull()
-                                detalles = response.detalles
-                                onUpdated(response.presupuesto.toAppBudget())
-                                pendingAccionCierre = null
-                            } catch (e: HttpException) {
-                                closeError = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-                                pendingAccionCierre = null
-                            } catch (e: IOException) {
-                                closeError = "No se pudo conectar con el servidor. Revisa tu conexión."
-                                pendingAccionCierre = null
-                            } catch (e: IllegalStateException) {
-                                closeError = "Tu sesión expiró. Vuelve a iniciar sesión."
-                                pendingAccionCierre = null
-                            } finally {
-                                isClosing = false
+                            val result = runBudgetCall(context, onError = { closeError = it }) { auth ->
+                                if (accionPendiente == AccionCierrePresupuesto.FINALIZAR) {
+                                    RetrofitClient.presupuestoApi.finalizarPresupuesto(auth, budgetId)
+                                } else {
+                                    RetrofitClient.presupuestoApi.cancelarPresupuesto(auth, budgetId)
+                                }
                             }
+                            result?.close()
+                            if (result != null) afterChange()
+                            pendingAccionCierre = null
+                            isClosing = false
                         }
                     },
                     enabled = !isClosing
@@ -599,95 +610,80 @@ private fun BudgetDetailDialog(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator(color = FinTrackNavy) }
-                loadError != null -> Text(text = loadError.orEmpty(), color = FinTrackRed)
-                budget != null -> {
-                    val current = budget!!
+                currentBudget == null -> Text(text = loadError.orEmpty(), color = FinTrackRed)
+                else -> {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        BudgetDetailRow("Período", "${formatShortDate(current.startDate)} – ${formatShortDate(current.endDate)}")
-                        BudgetDetailRow("Estado", when (current.state) {
-                            EstadoPresupuesto.ACTIVO -> "Activo"
-                            EstadoPresupuesto.FINALIZADO -> "Finalizado"
-                            EstadoPresupuesto.CANCELADO -> "Cancelado"
-                        })
-                        BudgetDetailRow("Indicador", current.indicator)
-                        BudgetDetailRow("Límite", formatCurrency(current.limitAmount))
-                        BudgetDetailRow("Consumido", formatCurrency(current.consumedAmount))
-                        consumidoPresupuestado?.let { BudgetDetailRow("  En categorías presupuestadas", formatCurrency(it)) }
-                        consumidoNoPresupuestado?.let { BudgetDetailRow("  Fuera de presupuesto", formatCurrency(it)) }
-                        if (current.exceededAmount > 0) {
-                            BudgetDetailRow("Excedido", formatCurrency(current.exceededAmount), valueColor = FinTrackRed)
+                        if (currentBudget.code.isNotBlank()) BudgetDetailRow("Código", currentBudget.code)
+                        BudgetDetailRow("Período", "${formatShortDate(currentBudget.startDate)} – ${formatShortDate(currentBudget.endDate)}")
+                        BudgetDetailRow("Estado", currentBudget.state.label())
+                        BudgetDetailRow("Indicador", currentBudget.indicator)
+                        BudgetDetailRow("Monto planeado", formatCurrency(currentBudget.plannedAmount))
+                        BudgetDetailRow("Límite disponible", formatCurrency(currentBudget.limitAmount))
+                        BudgetDetailRow("Consumido", formatCurrency(currentBudget.consumedAmount))
+                        if (currentBudget.exceededAmount > 0) {
+                            BudgetDetailRow("Excedido", formatCurrency(currentBudget.exceededAmount), valueColor = FinTrackRed)
                         } else {
-                            BudgetDetailRow("Restante", formatCurrency(current.remainingAmount))
+                            BudgetDetailRow("Restante", formatCurrency(currentBudget.remainingAmount))
                         }
-                        BudgetDetailRow("Avance", "${current.consumedPercent.toInt()}%")
-                        if (current.isOverdue) {
+                        BudgetDetailRow("Avance", "${currentBudget.consumedPercent.toInt()}%")
+                        if (currentBudget.isOverdue) {
                             BudgetDetailRow("Período vencido", "Sí", valueColor = FinTrackRed)
                         }
+                        Text(
+                            text = "El límite disponible es el monto planeado ajustado a tus ingresos reales del período.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
 
-                        if (detalles.isNotEmpty()) {
+                        if (budgetGroups.isNotEmpty()) {
                             Text(
-                                text = "Desglose por categoría",
+                                text = "Distribución por grupo",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                             )
-                            detalles.forEach { detalle ->
-                                BudgetDetailCategoryRow(detalle)
-                            }
+                            budgetGroups.forEach { group -> BudgetDetailGroupRow(group) }
                         }
 
-                        Text(
-                            text = "Gastos del período",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            GastoScope.entries.forEach { scope ->
-                                BudgetFilterChip(
-                                    label = scope.label,
-                                    selected = scope == selectedGastoScope,
-                                    onClick = { selectedGastoScope = scope }
-                                )
-                            }
-                        }
-                        when {
-                            isLoadingGastos -> Box(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) { CircularProgressIndicator(color = FinTrackNavy, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)) }
-                            gastosError != null -> Text(
-                                text = gastosError.orEmpty(),
+                        if (loadError != null) {
+                            Text(
+                                text = loadError.orEmpty(),
                                 color = FinTrackRed,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
-                            gastos.isEmpty() -> Text(
-                                text = "No hay gastos en este alcance todavía.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                            else -> gastos.forEach { gasto ->
-                                GastoRow(
-                                    gasto = gasto,
-                                    categoryName = categories.firstOrNull { it.id == gasto.categoria_id }?.name
-                                )
-                            }
                         }
 
-                        if (current.state == EstadoPresupuesto.ACTIVO) {
+                        if (currentBudget.state == EstadoPresupuesto.ACTIVO) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "Editar",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = FinTrackNavy,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { isEditing = true }
+                                )
+                                if (budgetGroups.isNotEmpty()) {
+                                    Text(
+                                        text = "Cambiar distribución",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = FinTrackNavy,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { isEditingDistribution = true }
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 Text(
@@ -741,18 +737,18 @@ private fun BudgetDetailRow(
     }
 }
 
-// Una fila del desglose por categoría: nombre + % asignado, barra de
-// progreso de esa categoría, y monto consumido/límite.
+// Una fila del desglose por grupo: nombre + % asignado, barra de progreso
+// de ese grupo, y monto consumido/asignado.
 @Composable
-private fun BudgetDetailCategoryRow(detalle: DetallePresupuestoSalidaResponse, modifier: Modifier = Modifier) {
-    val limite = detalle.monto_limite_categoria.toDoubleOrNull() ?: 0.0
-    val consumido = detalle.monto_consumido_categoria.toDoubleOrNull() ?: 0.0
-    val excedido = detalle.monto_excedido_categoria.toDoubleOrNull() ?: 0.0
+private fun BudgetDetailGroupRow(group: PeriodoGrupoResponse, modifier: Modifier = Modifier) {
+    val limite = group.monto_presupuesto_grupo?.toDoubleOrNull() ?: 0.0
+    val consumido = group.aplicado_dinero_grupo?.toDoubleOrNull() ?: 0.0
+    val excedido = group.monto_excedido_grupo?.toDoubleOrNull() ?: 0.0
     val isExceeded = excedido > 0
     Column(modifier = modifier.padding(vertical = 8.dp)) {
         LabeledProgressBar(
-            label = "${detalle.nombre_categoria} (${detalle.porcentaje_asignado_presupuesto}%)",
-            valueText = "${detalle.porcentaje_consumido_categoria.toDoubleOrNull()?.toInt() ?: 0}%",
+            label = "${group.nombre_grupo.orEmpty()} (${group.porcentaje_asignado_grupo ?: 0}%)",
+            valueText = "${group.porcentaje_utilizado_grupo?.toDoubleOrNull()?.toInt() ?: 0}%",
             progress = if (limite > 0) (consumido / limite).toFloat() else 0f,
             progressColor = if (isExceeded) FinTrackRed else FinTrackNavy
         )
@@ -768,7 +764,7 @@ private fun BudgetDetailCategoryRow(detalle: DetallePresupuestoSalidaResponse, m
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = detalle.indicador_categoria,
+                text = group.estado_consumo_grupo.orEmpty(),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isExceeded) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -776,55 +772,30 @@ private fun BudgetDetailCategoryRow(detalle: DetallePresupuestoSalidaResponse, m
     }
 }
 
-// Una fila de la lista de gastos del presupuesto: categoría + fecha a la
-// izquierda, monto en rojo a la derecha, comentario (si hay) debajo.
-@Composable
-private fun GastoRow(gasto: TransaccionResponse, categoryName: String?, modifier: Modifier = Modifier) {
-    val monto = gasto.monto_transaccion.toDoubleOrNull() ?: 0.0
-    val title = gasto.comentario_transaccion?.takeIf { it.isNotBlank() } ?: (categoryName ?: "Gasto")
-    val subtitle = if (categoryName != null) "$categoryName • ${formatShortDate(gasto.fecha_registro_transaccion)}" else formatShortDate(gasto.fecha_registro_transaccion)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text(text = "-" + formatCurrency(monto), color = FinTrackRed, fontWeight = FontWeight.Bold)
-    }
-}
-
-// Popup para crear un presupuesto nuevo. Manda el POST al backend él mismo
-// y, si tuvo éxito, le pasa el presupuesto ya creado a BudgetScreen.
+// Campo de fecha que abre un DatePicker al tocarlo. El DatePicker trabaja
+// en milisegundos UTC, por eso la conversión usa ZoneOffset.UTC.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddBudgetDialog(
-    categories: List<TransactionCategory>,
-    onDismiss: () -> Unit,
-    onCreated: (AppBudget) -> Unit
+private fun BudgetDateField(
+    label: String,
+    date: LocalDate?,
+    onDateSelected: (LocalDate) -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    var montoLimiteText by remember { mutableStateOf("") }
-    var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
-    var selectedCategoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    val percentageTexts = remember { mutableStateMapOf<String, String>() }
-    var isSaving by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = date?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+        )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    selectedDateMillis = datePickerState.selectedDateMillis
+                    datePickerState.selectedDateMillis?.let {
+                        onDateSelected(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
+                    }
                     showDatePicker = false
                 }) { Text("Aceptar") }
             },
@@ -836,120 +807,208 @@ private fun AddBudgetDialog(
         }
     }
 
-    val montoLimite = montoLimiteText.toDoubleOrNull()
-    val selectedDate = selectedDateMillis?.let {
-        Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, if (enabled) FinTrackNavy else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                .clickable(enabled = enabled) { showDatePicker = true }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CalendarMonth,
+                contentDescription = null,
+                tint = if (enabled) FinTrackNavy else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = date?.let { formatShortDate(it.toString()) } ?: "Elegir fecha",
+                color = if (date != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp)
+            )
+        }
     }
-    val isValid = montoLimite != null && montoLimite > 0 && selectedDate != null &&
-        selectedCategoryIds.isNotEmpty() &&
-        selectedCategoryIds.all { id -> percentageTexts[id]?.toIntOrNull()?.let { it in 1..100 } == true }
+}
+
+// Lee los porcentajes capturados; null si alguno no es un entero de 0 a 100.
+private fun SnapshotStateMap<String, String>.parsedPercentages(groups: List<GroupShare>): Map<String, Int>? {
+    val parsed = groups.associate { it.id to this[it.id]?.toIntOrNull() }
+    if (parsed.values.any { it == null || it !in 0..100 }) return null
+    return parsed.mapValues { it.value!! }
+}
+
+// Editor del % asignado a cada grupo. Muestra el total, que debe sumar 100.
+@Composable
+private fun GroupPercentagesEditor(
+    groups: List<GroupShare>,
+    percentageTexts: SnapshotStateMap<String, String>,
+    onChange: () -> Unit
+) {
+    groups.forEach { group ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = group.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(end = 12.dp)
+            )
+            OutlinedTextField(
+                value = percentageTexts[group.id].orEmpty(),
+                onValueChange = { percentageTexts[group.id] = it; onChange() },
+                label = { Text("%") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.width(90.dp),
+                shape = RoundedCornerShape(12.dp)
+            )
+        }
+    }
+    val total = groups.sumOf { percentageTexts[it.id]?.toIntOrNull() ?: 0 }
+    Text(
+        text = "Total: $total% (debe sumar 100%)",
+        style = MaterialTheme.typography.bodySmall,
+        color = if (total == 100) MaterialTheme.colorScheme.onSurfaceVariant else FinTrackRed,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+}
+
+// Popup para crear un presupuesto nuevo. Manda el POST al backend él mismo
+// y, si tuvo éxito, avisa a BudgetScreen para que recargue la lista.
+@Composable
+private fun AddBudgetDialog(
+    groups: List<GrupoResponse>,
+    onDismiss: () -> Unit,
+    onCreated: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var tipo by remember { mutableStateOf(TipoPeriodo.MENSUAL) }
+    var startDate by remember { mutableStateOf(LocalDate.now()) }
+    var customEndDate by remember { mutableStateOf<LocalDate?>(null) }
+    // El código se sugiere a partir del tipo y la fecha de inicio mientras el
+    // usuario no lo haya escrito a mano.
+    var codigoText by remember { mutableStateOf<String?>(null) }
+    var montoText by remember { mutableStateOf("") }
+    val shares = remember(groups) { groups.map { GroupShare(it.id_grupo, it.nombre_grupo) } }
+    val percentageTexts = remember(groups) {
+        mutableStateMapOf<String, String>().apply {
+            groups.forEach { put(it.id_grupo, it.porcentaje_sugerido_grupo.toString()) }
+        }
+    }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val codigo = codigoText ?: suggestedPeriodCode(tipo, startDate)
+    val endDate = tipo.endDateFor(startDate) ?: customEndDate
+    val monto = montoText.toDoubleOrNull()
+    val percentages = percentageTexts.parsedPercentages(shares)
+    val isValid = codigo.isNotBlank() && codigo.length <= 50 &&
+        monto != null && monto > 0 &&
+        endDate != null && !endDate.isBefore(startDate) &&
+        shares.isNotEmpty() && percentages != null && percentages.values.sum() == 100
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
         title = { Text(text = "Nuevo presupuesto", fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "Tipo de período",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TipoPeriodo.entries.forEach { option ->
+                        BudgetSelectableChip(
+                            label = option.label(),
+                            selected = option == tipo,
+                            onClick = { tipo = option; errorMessage = null }
+                        )
+                    }
+                }
+
+                BudgetDateField(
+                    label = "Fecha inicio",
+                    date = startDate,
+                    onDateSelected = { startDate = it; errorMessage = null }
+                )
+                BudgetDateField(
+                    label = if (tipo == TipoPeriodo.PERSONALIZADO) "Fecha fin" else "Fecha fin (automática)",
+                    date = endDate,
+                    onDateSelected = { customEndDate = it; errorMessage = null },
+                    enabled = tipo == TipoPeriodo.PERSONALIZADO
+                )
+                if (endDate != null && endDate.isBefore(startDate)) {
+                    Text(
+                        text = "La fecha fin no puede ser anterior a la de inicio.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FinTrackRed,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 OutlinedTextField(
-                    value = montoLimiteText,
-                    onValueChange = { montoLimiteText = it; errorMessage = null },
-                    label = { Text("Monto límite total") },
-                    placeholder = { Text("Ej. 2700.00") },
+                    value = codigo,
+                    onValueChange = { codigoText = it; errorMessage = null },
+                    label = { Text("Código del período") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = montoText,
+                    onValueChange = { montoText = it; errorMessage = null },
+                    label = { Text("Monto total") },
+                    placeholder = { Text("Ej. 5000.00") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
                     shape = RoundedCornerShape(12.dp)
                 )
 
                 Text(
-                    text = "Fecha fin",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, FinTrackNavy, RoundedCornerShape(12.dp))
-                        .clickable { showDatePicker = true }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(imageVector = Icons.Filled.CalendarMonth, contentDescription = null, tint = FinTrackNavy)
-                    Text(
-                        text = selectedDate?.let { formatShortDate(it.toString()) } ?: "Elegir fecha",
-                        color = if (selectedDate != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-
-                Text(
-                    text = "Categorías",
+                    text = "Distribución por grupo",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                 )
                 Text(
-                    text = "Elige a qué categorías asignar un % del límite total.",
+                    text = "Qué % del monto total le toca a cada grupo. Se precargan los porcentajes sugeridos.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (categories.isEmpty()) {
+                if (shares.isEmpty()) {
                     Text(
-                        text = "Necesitas al menos una categoría para crear un presupuesto.",
+                        text = "No se encontraron grupos para repartir el presupuesto.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = FinTrackRed
+                        color = FinTrackRed,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 } else {
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        categories.forEach { category ->
-                            BudgetSelectableChip(
-                                label = category.name,
-                                selected = category.id in selectedCategoryIds,
-                                onClick = {
-                                    errorMessage = null
-                                    if (category.id in selectedCategoryIds) {
-                                        selectedCategoryIds = selectedCategoryIds - category.id
-                                        percentageTexts.remove(category.id)
-                                    } else {
-                                        selectedCategoryIds = selectedCategoryIds + category.id
-                                        percentageTexts[category.id] = ""
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    selectedCategoryIds.forEach { categoryId ->
-                        val categoryName = categories.firstOrNull { it.id == categoryId }?.name ?: categoryId
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = categoryName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(end = 12.dp)
-                            )
-                            OutlinedTextField(
-                                value = percentageTexts[categoryId].orEmpty(),
-                                onValueChange = { percentageTexts[categoryId] = it; errorMessage = null },
-                                label = { Text("%") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.width(90.dp),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                        }
-                    }
+                    GroupPercentagesEditor(shares, percentageTexts, onChange = { errorMessage = null })
                 }
 
                 if (errorMessage != null) {
@@ -965,40 +1024,33 @@ private fun AddBudgetDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val montoValue = montoLimite ?: return@Button
-                    val fecha = selectedDate ?: return@Button
-                    val detalles = selectedCategoryIds.map { id ->
-                        DetallePresupuestoCrearRequest(
-                            categoria_id = id,
-                            porcentaje_asignado_presupuesto = percentageTexts[id]?.toIntOrNull() ?: 0
+                    val montoValue = monto ?: return@Button
+                    val fechaFin = endDate ?: return@Button
+                    val grupos = shares.map { share ->
+                        GrupoDistribucionRequest(
+                            grupo_id = share.id,
+                            porcentaje_asignado_grupo = percentages?.get(share.id) ?: 0
                         )
                     }
                     scope.launch {
                         isSaving = true
                         errorMessage = null
-                        try {
-                            val token = SessionManager.getAccessToken(context)
-                                ?: throw IllegalStateException("No hay sesión activa")
-                            val created = RetrofitClient.presupuestoApi.crearPresupuesto(
-                                authorization = "Bearer $token",
+                        val created = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                            RetrofitClient.presupuestoApi.crearPresupuesto(
+                                authorization = auth,
                                 request = CrearPresupuestoRequest(
-                                    fecha_fin_presupuesto = fecha.toString(),
-                                    // El backend exige el monto como texto decimal, no como número.
-                                    monto_limite_presupuesto = String.format(java.util.Locale.US, "%.2f", montoValue),
-                                    detalles = detalles
+                                    codigo_periodo = codigo.trim(),
+                                    tipo_periodo = tipo,
+                                    fecha_inicio_periodo = startDate.toString(),
+                                    fecha_fin_periodo = fechaFin.toString(),
+                                    monto_total_presupuesto = formatAmountForApi(montoValue),
+                                    grupos = grupos
                                 )
                             )
-                            onCreated(created.presupuesto.toAppBudget())
-                        } catch (e: HttpException) {
-                            isSaving = false
-                            errorMessage = if (e.code() == 401) "Tu sesión expiró. Vuelve a iniciar sesión." else e.parseApiErrorMessage()
-                        } catch (e: IOException) {
-                            isSaving = false
-                            errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión."
-                        } catch (e: IllegalStateException) {
-                            isSaving = false
-                            errorMessage = "Tu sesión expiró. Vuelve a iniciar sesión."
                         }
+                        created?.close()
+                        isSaving = false
+                        if (created != null) onCreated()
                     }
                 },
                 enabled = isValid && !isSaving,
@@ -1006,6 +1058,183 @@ private fun AddBudgetDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
             ) {
                 Text(text = if (isSaving) "Guardando..." else "Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para editar un presupuesto activo (PATCH /api/v1/presupuestos/{id}):
+// el backend solo permite cambiar la fecha fin y el monto total, y solo se
+// mandan los campos que cambiaron.
+@Composable
+private fun EditBudgetDialog(
+    budget: AppBudget,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val originalEndDate = remember(budget) { runCatching { LocalDate.parse(budget.endDate) }.getOrNull() }
+    val startDate = remember(budget) { runCatching { LocalDate.parse(budget.startDate) }.getOrNull() }
+    var endDate by remember { mutableStateOf(originalEndDate) }
+    var montoText by remember { mutableStateOf(formatAmountForApi(budget.plannedAmount)) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val monto = montoText.toDoubleOrNull()
+    val montoChanged = monto != null && monto != budget.plannedAmount
+    val endDateChanged = endDate != null && endDate != originalEndDate
+    val endDateValid = endDate == null || startDate == null || !endDate!!.isBefore(startDate)
+    val isValid = monto != null && monto > 0 && endDateValid && (montoChanged || endDateChanged)
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Editar presupuesto", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = montoText,
+                    onValueChange = { montoText = it; errorMessage = null },
+                    label = { Text("Monto total") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                BudgetDateField(
+                    label = "Fecha fin",
+                    date = endDate,
+                    onDateSelected = { endDate = it; errorMessage = null }
+                )
+                if (!endDateValid) {
+                    Text(
+                        text = "La fecha fin no puede ser anterior a la de inicio.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FinTrackRed,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val request = ActualizarPresupuestoRequest(
+                        fecha_fin_periodo = if (endDateChanged) endDate.toString() else null,
+                        monto_total_presupuesto = if (montoChanged) formatAmountForApi(monto!!) else null
+                    )
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        val saved = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                            RetrofitClient.presupuestoApi.actualizarPresupuesto(auth, budget.id, request)
+                        }
+                        saved?.close()
+                        isSaving = false
+                        if (saved != null) onSaved()
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para cambiar cuánto % le toca a cada grupo en un presupuesto activo
+// (PUT /api/v1/presupuestos/{id}/distribucion).
+@Composable
+private fun EditDistributionDialog(
+    budgetId: String,
+    groups: List<PeriodoGrupoResponse>,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val shares = remember(groups) {
+        groups.mapNotNull { group -> group.grupo_id?.let { GroupShare(it, group.nombre_grupo.orEmpty()) } }
+    }
+    val percentageTexts = remember(groups) {
+        mutableStateMapOf<String, String>().apply {
+            groups.forEach { group -> group.grupo_id?.let { put(it, (group.porcentaje_asignado_grupo ?: 0).toString()) } }
+        }
+    }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val percentages = percentageTexts.parsedPercentages(shares)
+    val isValid = shares.isNotEmpty() && percentages != null && percentages.values.sum() == 100
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Cambiar distribución", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "Qué % del presupuesto le toca a cada grupo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                GroupPercentagesEditor(shares, percentageTexts, onChange = { errorMessage = null })
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val grupos = shares.map { share ->
+                        GrupoDistribucionRequest(
+                            grupo_id = share.id,
+                            porcentaje_asignado_grupo = percentages?.get(share.id) ?: 0
+                        )
+                    }
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        val saved = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                            RetrofitClient.presupuestoApi.actualizarDistribucion(auth, budgetId, grupos)
+                        }
+                        saved?.close()
+                        isSaving = false
+                        if (saved != null) onSaved()
+                    }
+                },
+                enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
             }
         },
         dismissButton = {

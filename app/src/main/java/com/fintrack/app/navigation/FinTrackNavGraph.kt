@@ -1,13 +1,18 @@
 package com.fintrack.app.navigation
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
@@ -15,6 +20,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavHostController
+import com.fintrack.app.data.local.SessionEvents
+import com.fintrack.app.data.local.SessionManager
+import com.fintrack.app.data.local.UserProfileStore
 import com.fintrack.app.ui.screens.AccountsScreen
 import com.fintrack.app.ui.screens.AuthWelcomeScreen
 import com.fintrack.app.ui.screens.BudgetScreen
@@ -37,15 +45,39 @@ fun FinTrackApp() {
     // Controlador que guarda el historial de navegación (a qué pantalla ir,
     // cómo volver atrás, etc). "remember" hace que sobreviva a recomposiciones.
     val navController = rememberNavController()
+    val context = LocalContext.current
+    // Se decide una sola vez al abrir la app: con una sesión recordada y un
+    // token vigente se arranca directo en Home; si no, en el flujo de Auth.
+    // rememberSaveable evita repetir la decisión al rotar la pantalla.
+    val startDestination = rememberSaveable {
+        if (SessionManager.restoreSessionOnStartup(context)) FinTrackDestination.Home.route
+        else FinTrackDestination.Auth.route
+    }
+
+    // Si el backend rechaza el token (401), se cierra la sesión y se regresa
+    // al login, dejando la bienvenida debajo para que "atrás" lleve ahí.
+    val expiredToken by SessionEvents.expiredToken.collectAsState()
+    LaunchedEffect(expiredToken) {
+        val token = expiredToken ?: return@LaunchedEffect
+        SessionEvents.consume()
+        // Un 401 de una petición hecha con un token viejo (p. ej. una que seguía
+        // en curso cuando el usuario volvió a iniciar sesión) no debe sacarlo.
+        if (token != SessionManager.getAccessToken(context)) return@LaunchedEffect
+        SessionManager.clearSession(context)
+        UserProfileStore.clear()
+        Toast.makeText(context, "Tu sesión expiró. Vuelve a iniciar sesión.", Toast.LENGTH_LONG).show()
+        navController.navigate(FinTrackDestination.Auth.route) {
+            popUpTo(0) { inclusive = true }
+        }
+        navController.navigate(FinTrackDestination.Login.route)
+    }
 
     Scaffold(
         bottomBar = { FinTrackBottomBar(navController) }
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // Sin sesión persistida, la app siempre arranca en el flujo de
-            // autenticación (Auth); tras iniciar sesión se navega a Home.
-            startDestination = FinTrackDestination.Auth.route,
+            startDestination = startDestination,
             modifier = Modifier.padding(
                 top = innerPadding.calculateTopPadding(),
                 bottom = innerPadding.calculateBottomPadding()
@@ -112,10 +144,12 @@ fun FinTrackApp() {
                         navController.navigate(FinTrackDestination.ChangePassword.route) { launchSingleTop = true }
                     },
                     onLogout = {
-                        // Cierra sesión: limpia el perfil en caché y todo el back
-                        // stack, y vuelve a la pantalla de bienvenida (iniciar
-                        // sesión / crear cuenta).
-                        com.fintrack.app.data.local.UserProfileStore.clear()
+                        // Cierra sesión: borra el token guardado (si no, la app
+                        // volvería a entrar sola al reabrirla), limpia el perfil en
+                        // caché y todo el back stack, y vuelve a la pantalla de
+                        // bienvenida (iniciar sesión / crear cuenta).
+                        SessionManager.clearSession(context)
+                        UserProfileStore.clear()
                         navController.navigate(FinTrackDestination.Auth.route) {
                             popUpTo(0) { inclusive = true }
                         }

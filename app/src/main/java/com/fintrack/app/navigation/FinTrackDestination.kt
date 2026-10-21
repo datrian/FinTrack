@@ -41,6 +41,9 @@ sealed class FinTrackDestination(val route: String, val label: String, val icon:
 
     companion object {
         // Lista usada para dibujar los botones de la barra inferior, en orden.
-        val bottomBarItems = listOf(Home, Accounts, Transactions, Budget, Goals, Prediction)
+        // Es "by lazy" a propósito: si se armara al inicializar la clase y el
+        // primer destino usado fuera Home (arranque con sesión recordada),
+        // Home todavía estaría a medio inicializar y quedaría null en la lista.
+        val bottomBarItems by lazy { listOf(Home, Accounts, Transactions, Budget, Goals, Prediction) }
     }
 }

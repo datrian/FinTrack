@@ -1,129 +1,166 @@
 package com.fintrack.app.data.remote
 
-import com.fintrack.app.data.model.AccionCierrePresupuesto
 import com.fintrack.app.data.model.EstadoPresupuesto
+import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
-import retrofit2.http.Query
 
-// "porcentaje_alerta_presupuesto" se queda en su valor por defecto (80): el
-// backend ya lo aplica si no se manda, no hace falta un control en la UI.
-data class DetallePresupuestoCrearRequest(
-    val categoria_id: String,
-    val porcentaje_asignado_presupuesto: Int,
-    val porcentaje_alerta_presupuesto: Int = 80
+// Un presupuesto es un "periodo": un monto total para unas fechas, repartido
+// por porcentaje entre los 4 grupos fijos del backend (Deudas, Gastos fijos,
+// Gustos, Ahorro). Los porcentajes de los 4 grupos deben sumar 100.
+
+// Los 4 tipos de período que acepta el backend al crear un presupuesto.
+enum class TipoPeriodo { SEMANAL, QUINCENAL, MENSUAL, PERSONALIZADO }
+
+// Lo que se manda por cada grupo al crear un presupuesto o al cambiar su
+// distribución (PUT /api/v1/presupuestos/{id}/distribucion).
+// "porcentaje_alerta_grupo" se queda en su valor por defecto (80): el backend
+// ya lo aplica si no se manda, no hace falta un control en la UI.
+data class GrupoDistribucionRequest(
+    val grupo_id: String,
+    val porcentaje_asignado_grupo: Int,
+    val porcentaje_alerta_grupo: Int = 80
 )
 
-// "monto_limite_presupuesto" va como String (no number): mismo patrón ya
-// confirmado contra el backend real en transacciones y metas (el schema
-// admite number o string, pero el validador exige texto decimal).
+// "monto_total_presupuesto" va como String: el schema acepta number o
+// string, y es el mismo patrón ya usado en transacciones y metas.
 data class CrearPresupuestoRequest(
-    // Formato "yyyy-MM-dd" (date, sin hora). La fecha de inicio la pone el
-    // backend automáticamente.
-    val fecha_fin_presupuesto: String,
-    val monto_limite_presupuesto: String,
-    val detalles: List<DetallePresupuestoCrearRequest>
+    val codigo_periodo: String,
+    val tipo_periodo: TipoPeriodo,
+    // Formato "yyyy-MM-dd" (date, sin hora).
+    val fecha_inicio_periodo: String,
+    val fecha_fin_periodo: String,
+    val monto_total_presupuesto: String,
+    // Siempre los 4 grupos (el backend exige exactamente 4).
+    val grupos: List<GrupoDistribucionRequest>
 )
 
-data class PresupuestoResumenResponse(
-    val id_presupuesto: String,
-    val fecha_inicio_presupuesto: String,
-    val fecha_fin_presupuesto: String,
-    val fecha_cierre_presupuesto: String?,
-    val estado_presupuesto: EstadoPresupuesto,
-    // El backend serializa los montos como string (no number) para evitar
-    // problemas de precisión con decimales.
-    val monto_limite_presupuesto: String,
-    val monto_consumido_presupuesto: String,
-    val monto_restante_presupuesto: String,
-    val monto_excedido_presupuesto: String,
-    val porcentaje_consumido_presupuesto: String,
-    val indicador_presupuesto: String,
-    val periodo_vencido: Boolean
+// PATCH /api/v1/presupuestos/{id}: solo se puede cambiar la fecha fin y el
+// monto total. Lo que vaya en null no se modifica (Gson no serializa nulls).
+data class ActualizarPresupuestoRequest(
+    val fecha_fin_periodo: String? = null,
+    val monto_total_presupuesto: String? = null
 )
 
-data class PresupuestoListaSalida(
-    val presupuestos: List<PresupuestoResumenResponse>,
-    val total: Int,
-    val limite: Int,
-    val offset: Int
+// Los montos llegan como number; Gson los convierte a String sin problema y
+// se parsean con toDoubleOrNull(). Todo es nullable porque Gson ignora la
+// nulabilidad de Kotlin: un campo que no llega quedaría null y tiraría la app
+// al usarlo como no-null.
+data class PeriodoResponse(
+    val id_periodo: String?,
+    val codigo_periodo: String?,
+    val tipo_periodo: String?,
+    val fecha_inicio_periodo: String?,
+    val fecha_fin_periodo: String?,
+    val fecha_cierre_periodo: String?,
+    val estado_periodo: EstadoPresupuesto?,
+    // Lo que el usuario capturó al crear el presupuesto.
+    val monto_total_presupuesto: String?,
+    // El monto que realmente se puede gastar en el período (lo limitan los
+    // ingresos reales): es el "límite" que muestra la app.
+    val monto_presupuesto_periodo: String?,
+    val aplicado_total_periodo: String?,
+    val monto_restante_periodo: String?,
+    val monto_excedido_periodo: String?,
+    val porcentaje_consumido_periodo: String?,
+    // "OK", etc.
+    val estado_consumo_periodo: String?,
+    val periodo_vencido: Boolean?
 )
 
-data class DetallePresupuestoSalidaResponse(
-    val id_detalle_presupuesto: String,
-    val categoria_id: String,
-    val nombre_categoria: String,
-    val porcentaje_asignado_presupuesto: Int,
-    val porcentaje_alerta_presupuesto: Int,
-    val monto_limite_categoria: String,
-    val monto_consumido_categoria: String,
-    val monto_restante_categoria: String,
-    val monto_excedido_categoria: String,
-    val porcentaje_consumido_categoria: String,
-    val indicador_categoria: String
+data class PeriodoListaSalida(
+    val presupuestos: List<PeriodoResponse>?
 )
 
-data class PresupuestoDetalleResponse(
-    val presupuesto: PresupuestoResumenResponse,
-    val monto_consumido_presupuestado: String,
-    val monto_consumido_no_presupuestado: String,
-    val detalles: List<DetallePresupuestoSalidaResponse>
+// El desglose del presupuesto en uno de los 4 grupos.
+data class PeriodoGrupoResponse(
+    val grupo_id: String?,
+    val nombre_grupo: String?,
+    val porcentaje_asignado_grupo: Int?,
+    val monto_presupuesto_grupo: String?,
+    val aplicado_dinero_grupo: String?,
+    val monto_restante_grupo: String?,
+    val monto_excedido_grupo: String?,
+    // null cuando el grupo tiene 0% asignado (no hay sobre qué calcularlo).
+    val porcentaje_utilizado_grupo: String?,
+    val estado_consumo_grupo: String?
 )
 
-data class CerrarPresupuestoRequest(val accion: AccionCierrePresupuesto)
-
-// Cada gasto es una transacción real (GASTO) del período del presupuesto;
-// reutiliza el mismo shape que devuelve GET /api/v1/transacciones.
-data class PresupuestoGastosSalida(
-    val gastos: List<TransaccionResponse>,
-    val total: Int,
-    val limite: Int,
-    val offset: Int
+// GET /api/v1/presupuestos/{id}.
+data class PeriodoDetalleResponse(
+    val periodo: PeriodoResponse?,
+    val grupos: List<PeriodoGrupoResponse>?
 )
 
+// Catálogo de grupos (GET /api/v1/grupos), para armar el formulario de
+// "Nuevo presupuesto" con sus porcentajes sugeridos.
+data class GrupoResponse(
+    val id_grupo: String,
+    val nombre_grupo: String,
+    val porcentaje_sugerido_grupo: Int,
+    val es_activo_grupo: Boolean
+)
+
+data class GrupoListaSalida(
+    val grupos: List<GrupoResponse>
+)
+
+// Las operaciones que modifican un presupuesto devuelven ResponseBody: el
+// esquema del backend no documenta su respuesta, así que después de cada una
+// la app vuelve a pedir el detalle o la lista en lugar de depender de ella.
 interface PresupuestoApiService {
-    // "estado" acepta ACTIVO/FINALIZADO/CANCELADO/TODOS (por eso es String y
-    // no EstadoPresupuesto: "TODOS" no es un estado real). Sin "estado" el
-    // backend filtra por ACTIVO (su valor por defecto).
+    // Devuelve los presupuestos de todos los estados: el filtro por estado
+    // se hace en la app.
     @GET("api/v1/presupuestos")
     suspend fun obtenerPresupuestos(
-        @Header("Authorization") authorization: String,
-        @Query("estado") estado: String? = null,
-        @Query("limite") limite: Int = 20,
-        @Query("offset") offset: Int = 0
-    ): PresupuestoListaSalida
+        @Header("Authorization") authorization: String
+    ): PeriodoListaSalida
 
     @POST("api/v1/presupuestos")
     suspend fun crearPresupuesto(
         @Header("Authorization") authorization: String,
         @Body request: CrearPresupuestoRequest
-    ): PresupuestoDetalleResponse
+    ): ResponseBody
 
-    @GET("api/v1/presupuestos/{id_presupuesto}")
+    @GET("api/v1/presupuestos/{id_periodo}")
     suspend fun obtenerPresupuesto(
         @Header("Authorization") authorization: String,
-        @Path("id_presupuesto") idPresupuesto: String
-    ): PresupuestoDetalleResponse
+        @Path("id_periodo") idPeriodo: String
+    ): PeriodoDetalleResponse
 
-    @POST("api/v1/presupuestos/{id_presupuesto}/cierre")
-    suspend fun cerrarPresupuesto(
+    @PATCH("api/v1/presupuestos/{id_periodo}")
+    suspend fun actualizarPresupuesto(
         @Header("Authorization") authorization: String,
-        @Path("id_presupuesto") idPresupuesto: String,
-        @Body request: CerrarPresupuestoRequest
-    ): PresupuestoDetalleResponse
+        @Path("id_periodo") idPeriodo: String,
+        @Body request: ActualizarPresupuestoRequest
+    ): ResponseBody
 
-    // "alcance" filtra entre TODOS (por defecto)/PRESUPUESTADOS (de una
-    // categoría del presupuesto)/NO_PRESUPUESTADOS (de otras categorías).
-    @GET("api/v1/presupuestos/{id_presupuesto}/gastos")
-    suspend fun obtenerGastosPresupuesto(
+    @PUT("api/v1/presupuestos/{id_periodo}/distribucion")
+    suspend fun actualizarDistribucion(
         @Header("Authorization") authorization: String,
-        @Path("id_presupuesto") idPresupuesto: String,
-        @Query("alcance") alcance: String? = null,
-        @Query("categoria_id") categoriaId: String? = null,
-        @Query("limite") limite: Int = 20,
-        @Query("offset") offset: Int = 0
-    ): PresupuestoGastosSalida
+        @Path("id_periodo") idPeriodo: String,
+        @Body grupos: List<GrupoDistribucionRequest>
+    ): ResponseBody
+
+    @POST("api/v1/presupuestos/{id_periodo}/finalizar")
+    suspend fun finalizarPresupuesto(
+        @Header("Authorization") authorization: String,
+        @Path("id_periodo") idPeriodo: String
+    ): ResponseBody
+
+    @POST("api/v1/presupuestos/{id_periodo}/cancelar")
+    suspend fun cancelarPresupuesto(
+        @Header("Authorization") authorization: String,
+        @Path("id_periodo") idPeriodo: String
+    ): ResponseBody
+
+    @GET("api/v1/grupos")
+    suspend fun obtenerGrupos(
+        @Header("Authorization") authorization: String
+    ): GrupoListaSalida
 }

@@ -1,7 +1,9 @@
 package com.fintrack.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +15,8 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,9 +56,12 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var email by remember { mutableStateOf("") }
+    // Si en el último login se marcó "Recordar mis datos", el correo viene precargado.
+    val rememberedEmail = remember { SessionManager.getRememberedEmail(context) }
+    var email by remember { mutableStateOf(rememberedEmail.orEmpty()) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var rememberMe by remember { mutableStateOf(rememberedEmail != null) }
     var isChecking by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -99,6 +107,24 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
                             .padding(top = 12.dp),
                         shape = RoundedCornerShape(12.dp)
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clickable { rememberMe = !rememberMe }
+                    ) {
+                        Checkbox(
+                            checked = rememberMe,
+                            onCheckedChange = { rememberMe = it },
+                            colors = CheckboxDefaults.colors(checkedColor = FinTrackNavy)
+                        )
+                        Text(
+                            text = "Recordar mis datos y mantener sesión",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     if (errorMessage != null) {
                         Text(
                             text = errorMessage.orEmpty(),
@@ -126,7 +152,8 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
                                         accessToken = token.access_token,
                                         userId = token.usuario.id_usuario,
                                         name = token.usuario.nombre_usuario,
-                                        email = token.usuario.correo_usuario
+                                        email = token.usuario.correo_usuario,
+                                        rememberMe = rememberMe
                                     )
                                     isChecking = false
                                     onLoginSuccess()

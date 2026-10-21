@@ -579,9 +579,14 @@ private fun AddTransactionDialog(
 
     val monto = montoText.toDoubleOrNull()
     val isTransferencia = selectedType == TipoTransaccion.TRANSFERENCIA
+    // El backend exige categoría en los gastos (sin ella responde
+    // DATOS_INVALIDOS) y la rechaza en ingresos y transferencias, así que
+    // solo se pide, y se manda, para los gastos.
+    val isGasto = selectedType == TipoTransaccion.GASTO
     val isValid = selectedAccountId != null &&
         monto != null && monto > 0 &&
-        (!isTransferencia || (selectedDestinationAccountId != null && selectedDestinationAccountId != selectedAccountId))
+        (!isTransferencia || (selectedDestinationAccountId != null && selectedDestinationAccountId != selectedAccountId)) &&
+        (!isGasto || selectedCategoryId != null)
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -606,6 +611,7 @@ private fun AddTransactionDialog(
                             onClick = {
                                 selectedType = tipo
                                 if (tipo != TipoTransaccion.TRANSFERENCIA) selectedDestinationAccountId = null
+                                if (tipo != TipoTransaccion.GASTO) selectedCategoryId = null
                             }
                         )
                     }
@@ -672,22 +678,31 @@ private fun AddTransactionDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                if (categories.isNotEmpty()) {
+                if (isGasto) {
                     Text(
-                        text = "Categoría (opcional)",
+                        text = "Categoría",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                     )
+                    if (categories.isEmpty()) {
+                        Text(
+                            text = "Los gastos necesitan una categoría. Crea una en Mi Perfil > Categorías.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = FinTrackRed
+                        )
+                    } else if (selectedCategoryId == null) {
+                        Text(
+                            text = "Elige una categoría para el gasto.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SelectableChip(
-                            label = "Ninguna",
-                            selected = selectedCategoryId == null,
-                            onClick = { selectedCategoryId = null }
-                        )
                         categories.forEach { category ->
                             SelectableChip(
                                 label = category.name,
@@ -769,8 +784,8 @@ private fun AddTransactionDialog(
                                     // El backend exige el monto como texto decimal, no como número.
                                     monto_transaccion = String.format(java.util.Locale.US, "%.2f", montoValue),
                                     cuenta_destino_id = if (isTransferencia) selectedDestinationAccountId else null,
-                                    categoria_id = selectedCategoryId,
-                                    subcategoria_id = selectedSubcategoryId,
+                                    categoria_id = if (isGasto) selectedCategoryId else null,
+                                    subcategoria_id = if (isGasto) selectedSubcategoryId else null,
                                     comentario_transaccion = comentario.trim().ifBlank { null }
                                 )
                             )

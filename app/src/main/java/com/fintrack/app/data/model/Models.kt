@@ -58,25 +58,28 @@ enum class TipoAsignacion { APORTE, RETIRO }
 // CANCELAR la cierra como cancelada sin evaluar el monto.
 enum class AccionCierre { FINALIZAR, CANCELAR }
 
-// Los 3 estados posibles de un presupuesto (GET/POST /api/v1/presupuestos).
-// El GET también acepta el valor especial "TODOS" como filtro, que no es un
-// estado real y por eso no forma parte de este enum.
+// Los 3 estados posibles de un presupuesto ("estado_periodo" en
+// GET /api/v1/presupuestos).
 enum class EstadoPresupuesto { ACTIVO, FINALIZADO, CANCELADO }
 
-// Las 2 acciones que acepta el cierre de un presupuesto (POST
-// /api/v1/presupuestos/{id}/cierre): FINALIZAR lo cierra como terminado;
-// CANCELAR lo cierra como cancelado.
+// Las 2 formas de cerrar un presupuesto: FINALIZAR (POST
+// /api/v1/presupuestos/{id}/finalizar) lo cierra como terminado; CANCELAR
+// (POST /api/v1/presupuestos/{id}/cancelar) lo cierra como cancelado.
 enum class AccionCierrePresupuesto { FINALIZAR, CANCELAR }
 
-// Un presupuesto real del usuario, traído de GET /api/v1/presupuestos. Es un
-// límite total de gasto para un período (sin cuenta asociada); el backend
-// calcula cuánto se ha consumido a partir de las transacciones de tipo GASTO
-// registradas en ese período.
+// Un presupuesto real del usuario, traído de GET /api/v1/presupuestos (el
+// backend lo llama "periodo"). Es un monto total para unas fechas, repartido
+// entre los 4 grupos de gasto; el backend calcula cuánto se ha consumido a
+// partir de las transacciones registradas en ese período.
 data class AppBudget(
     val id: String,
+    val code: String,
     val startDate: String,
     val endDate: String,
     val state: EstadoPresupuesto,
+    // Monto que capturó el usuario al crearlo.
+    val plannedAmount: Double,
+    // Monto que realmente se puede gastar (lo limitan los ingresos reales).
     val limitAmount: Double,
     val consumedAmount: Double,
     val remainingAmount: Double,
