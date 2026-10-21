@@ -52,14 +52,19 @@ import com.fintrack.app.data.local.ProfilePhotoStore
 import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.local.UserProfileStore
 import com.fintrack.app.data.model.TipoTransaccion
+import com.fintrack.app.data.remote.PeriodoResponse
+import com.fintrack.app.data.remote.ResumenDashboardResponse
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.TransaccionResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
+import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.ProfileAvatar
 import com.fintrack.app.ui.components.QuickAccessCard
 import com.fintrack.app.ui.components.SectionCard
+import com.fintrack.app.ui.components.LabeledProgressBar
 import com.fintrack.app.ui.components.formatCurrency
+import com.fintrack.app.ui.components.formatShortDate
 import com.fintrack.app.ui.components.initialsOf
 import com.fintrack.app.ui.theme.FinTrackGreen
 import com.fintrack.app.ui.theme.FinTrackNavy
@@ -106,34 +111,29 @@ internal fun TransaccionResponse.yearMonth(): YearMonth? {
 
 private fun TransaccionResponse.amount(): Double = monto_transaccion.toDoubleOrNull() ?: 0.0
 
-// Totales que muestra Inicio, calculados a partir de las transacciones.
-// Las transferencias no cuentan: solo mueven dinero entre cuentas propias.
+// Totales del resumen mensual de Inicio, calculados a partir de las
+// transacciones. Las transferencias no cuentan: solo mueven dinero entre
+// cuentas propias.
 internal data class HomeTotals(
-    val balance: Double,       // todos los ingresos - todos los gastos
     val monthIncome: Double,   // ingresos del mes actual
     val monthExpenses: Double  // gastos del mes actual
 )
 
 internal fun List<TransaccionResponse>.toHomeTotals(month: YearMonth): HomeTotals {
-    var balance = 0.0
     var monthIncome = 0.0
     var monthExpenses = 0.0
     for (t in this) {
-        val inMonth = t.yearMonth() == month
+        if (t.yearMonth() != month) continue
         when (t.tipo_transaccion) {
-            TipoTransaccion.INGRESO -> {
-                balance += t.amount()
-                if (inMonth) monthIncome += t.amount()
-            }
-            TipoTransaccion.GASTO -> {
-                balance -= t.amount()
-                if (inMonth) monthExpenses += t.amount()
-            }
+            TipoTransaccion.INGRESO -> monthIncome += t.amount()
+            TipoTransaccion.GASTO -> monthExpenses += t.amount()
             TipoTransaccion.TRANSFERENCIA -> Unit
         }
     }
-    return HomeTotals(balance, monthIncome, monthExpenses)
+    return HomeTotals(monthIncome, monthExpenses)
 }
+
+private fun String?.amountOrZero(): Double = this?.toDoubleOrNull() ?: 0.0
 
 // Pantalla de Inicio: saludo, balance total, resumen mensual y accesos rápidos.
 // Es la primera pantalla que ve el usuario al abrir la app.
@@ -141,15 +141,26 @@ internal fun List<TransaccionResponse>.toHomeTotals(month: YearMonth): HomeTotal
 fun HomeScreen(
     onNavigateToAccounts: () -> Unit,
     onAddTransaction: () -> Unit,
+    onNavigateToBudget: () -> Unit = {},
     onOpenProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentMonth = remember { YearMonth.now() }
+
+    // Saldos y presupuesto activo, de GET /api/v1/usuarios/me/resumen-dashboard.
     // null mientras carga o si la petición falló.
+    var dashboard by remember { mutableStateOf<ResumenDashboardResponse?>(null) }
+    var dashboardError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        dashboard = runAuthenticatedCall(context, onError = { dashboardError = it }) { auth ->
+            RetrofitClient.usuarioApi.obtenerResumenDashboard(auth)
+        }
+    }
+
+    // El resumen mensual se sigue calculando con las transacciones: el
+    // dashboard no trae ingresos ni gastos por mes.
     var totals by remember { mutableStateOf<HomeTotals?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
-
-    // Una sola carga de transacciones alimenta el balance y el resumen mensual.
     LaunchedEffect(Unit) {
         try {
             val token = SessionManager.getAccessToken(context)
@@ -176,10 +187,18 @@ fun HomeScreen(
                 GreetingCard()
 
                 BalanceCard(
-                    balance = totals?.balance,
-                    loadError = loadError,
+                    dashboard = dashboard,
+                    loadError = dashboardError,
                     modifier = Modifier.padding(top = 16.dp)
                 )
+
+                dashboard?.periodo_activo?.let { periodo ->
+                    ActiveBudgetCard(
+                        periodo = periodo,
+                        onClick = onNavigateToBudget,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
 
                 MonthlySummaryCard(
                     month = currentMonth,
@@ -273,10 +292,11 @@ private fun GreetingCard(modifier: Modifier = Modifier) {
     }
 }
 
-// Tarjeta azul grande con el balance total: la suma de todos los ingresos
-// menos la suma de todos los gastos registrados en transacciones.
+// Tarjeta azul grande con el saldo total de las cuentas del usuario, cuánto
+// de eso está libre o reservado y, si tiene tarjetas de crédito, cuánto
+// crédito le queda disponible.
 @Composable
-private fun BalanceCard(balance: Double?, loadError: String?, modifier: Modifier = Modifier) {
+private fun BalanceCard(dashboard: ResumenDashboardResponse?, loadError: String?, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -284,18 +304,33 @@ private fun BalanceCard(balance: Double?, loadError: String?, modifier: Modifier
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "Balance Total Disponible",
+                text = "Saldo Total",
                 color = Color.White.copy(alpha = 0.75f),
                 style = MaterialTheme.typography.bodyMedium
             )
             when {
-                balance != null -> Text(
-                    text = formatCurrency(balance),
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                dashboard != null -> {
+                    Text(
+                        text = formatCurrency(dashboard.saldo_total_usuario.amountOrZero()),
+                        color = Color.White,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    BalanceDetailRow("Dinero libre", formatCurrency(dashboard.dinero_libre_total_usuario.amountOrZero()))
+                    val reserved = dashboard.reserva_total_usuario.amountOrZero()
+                    if (reserved > 0) BalanceDetailRow("Reservado", formatCurrency(reserved))
+                    val creditLimit = dashboard.limite_credito_total_usuario.amountOrZero()
+                    if (creditLimit > 0) {
+                        val usage = dashboard.porcentaje_utilizacion_credito_usuario?.toDoubleOrNull()
+                        BalanceDetailRow(
+                            label = "Crédito disponible",
+                            value = formatCurrency(dashboard.credito_disponible_total_usuario.amountOrZero()) +
+                                " de " + formatCurrency(creditLimit)
+                        )
+                        if (usage != null) BalanceDetailRow("Uso de crédito", "${Math.round(usage)}%")
+                    }
+                }
                 loadError != null -> Text(
                     text = loadError,
                     color = Color.White,
@@ -310,6 +345,80 @@ private fun BalanceCard(balance: Double?, loadError: String?, modifier: Modifier
                         .size(32.dp)
                 )
             }
+        }
+    }
+}
+
+// Una fila de texto blanco dentro de la tarjeta de saldo: concepto a la
+// izquierda, monto a la derecha.
+@Composable
+private fun BalanceDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodyMedium)
+        Text(text = value, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+// Tarjeta del presupuesto activo (viene en el resumen del dashboard): cuánto
+// se ha consumido del límite y cuánto queda. Tocarla abre Presupuestos.
+@Composable
+private fun ActiveBudgetCard(periodo: PeriodoResponse, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val limit = periodo.monto_presupuesto_periodo.amountOrZero()
+    val consumed = periodo.aplicado_total_periodo.amountOrZero()
+    val exceeded = periodo.monto_excedido_periodo.amountOrZero()
+    val isExceeded = exceeded > 0
+    SectionCard(modifier = modifier.clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Presupuesto Activo",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            periodo.codigo_periodo?.let {
+                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        val start = periodo.fecha_inicio_periodo
+        val end = periodo.fecha_fin_periodo
+        if (start != null && end != null) {
+            Text(
+                text = "${formatShortDate(start)} – ${formatShortDate(end)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        LabeledProgressBar(
+            label = formatCurrency(consumed),
+            valueText = "${periodo.porcentaje_consumido_periodo?.toDoubleOrNull()?.let { Math.round(it) } ?: 0}%",
+            progress = if (limit > 0) (consumed / limit).toFloat() else 0f,
+            progressColor = if (isExceeded) FinTrackRed else FinTrackNavy,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Límite: ${formatCurrency(limit)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = if (isExceeded) "Excedido: ${formatCurrency(exceeded)}" else "Restante: ${formatCurrency(periodo.monto_restante_periodo.amountOrZero())}",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isExceeded) FinTrackRed else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

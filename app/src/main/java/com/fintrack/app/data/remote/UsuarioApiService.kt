@@ -31,6 +31,23 @@ data class UsuarioPerfilResponse(
     val fecha_desactivacion_usuario: String?
 )
 
+// GET /api/v1/usuarios/me/resumen-dashboard: saldos totales de todas las
+// cuentas del usuario, su crédito y el presupuesto activo (null si no hay).
+// Los montos llegan como texto decimal. Todo es nullable porque Gson ignora la
+// nulabilidad de Kotlin.
+data class ResumenDashboardResponse(
+    val saldo_total_usuario: String?,
+    val reserva_total_usuario: String?,
+    val dinero_libre_total_usuario: String?,
+    val limite_credito_total_usuario: String?,
+    val credito_utilizado_total_usuario: String?,
+    val credito_disponible_total_usuario: String?,
+    // null cuando no hay límite de crédito sobre el cual calcularlo.
+    val porcentaje_utilizacion_credito_usuario: String?,
+    // Mismos campos que un presupuesto de GET /api/v1/presupuestos.
+    val periodo_activo: PeriodoResponse?
+)
+
 interface UsuarioApiService {
     // Requiere sesión activa (Authorization: Bearer <token>).
     @GET("api/v1/usuarios/me")
@@ -57,4 +74,8 @@ interface UsuarioApiService {
     // backend responde 204 si la cuenta quedó desactivada.
     @PATCH("api/v1/usuarios/me/estado")
     suspend fun desactivarMiCuenta(@Header("Authorization") authorization: String): Response<Unit>
+
+    // Requiere sesión activa (Authorization: Bearer <token>).
+    @GET("api/v1/usuarios/me/resumen-dashboard")
+    suspend fun obtenerResumenDashboard(@Header("Authorization") authorization: String): ResumenDashboardResponse
 }

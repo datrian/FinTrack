@@ -111,7 +111,9 @@ data class AppGoal(
 // ícono genérico.
 data class TransactionCategory(
     val id: String,
-    val name: String
+    val name: String,
+    // Grupo de presupuesto de la categoría (solo lo usa la pantalla de Categorías).
+    val groupId: String? = null
 )
 
 // Una subcategoría real de una categoría del usuario, traída de

@@ -22,17 +22,6 @@ class HomeTotalsTest {
     private val octubre = YearMonth.of(2026, 10)
 
     @Test
-    fun `balance suma ingresos y resta gastos de todos los meses`() {
-        val totals = listOf(
-            tx(TipoTransaccion.INGRESO, "1000.00", "2026-09-15T12:00:00"),
-            tx(TipoTransaccion.INGRESO, "500.50", "2026-10-02T12:00:00"),
-            tx(TipoTransaccion.GASTO, "300.25", "2026-10-03T12:00:00"),
-            tx(TipoTransaccion.GASTO, "100.00", "2026-08-01T12:00:00")
-        ).toHomeTotals(octubre)
-        assertEquals(1100.25, totals.balance, 0.001)
-    }
-
-    @Test
     fun `resumen mensual solo cuenta el mes actual`() {
         val totals = listOf(
             tx(TipoTransaccion.INGRESO, "1000.00", "2026-09-30T12:00:00"),
@@ -45,12 +34,12 @@ class HomeTotalsTest {
     }
 
     @Test
-    fun `las transferencias no cambian balance ni resumen`() {
+    fun `las transferencias no cambian el resumen`() {
         val totals = listOf(
             tx(TipoTransaccion.INGRESO, "100.00", "2026-10-01T12:00:00"),
             tx(TipoTransaccion.TRANSFERENCIA, "80.00", "2026-10-01T12:00:00")
         ).toHomeTotals(octubre)
-        assertEquals(HomeTotals(balance = 100.0, monthIncome = 100.0, monthExpenses = 0.0), totals)
+        assertEquals(HomeTotals(monthIncome = 100.0, monthExpenses = 0.0), totals)
     }
 
     @Test

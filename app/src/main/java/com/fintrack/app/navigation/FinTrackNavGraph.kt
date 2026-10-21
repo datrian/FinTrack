@@ -119,6 +119,7 @@ fun FinTrackApp() {
                 HomeScreen(
                     onNavigateToAccounts = { navController.navigateSingleTop(FinTrackDestination.Accounts.route) },
                     onAddTransaction = { navController.navigateSingleTop(FinTrackDestination.Transactions.route) },
+                    onNavigateToBudget = { navController.navigateSingleTop(FinTrackDestination.Budget.route) },
                     onOpenProfile = openProfile
                 )
             }

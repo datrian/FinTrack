@@ -13,9 +13,14 @@ data class RenombrarCategoriaRequest(val nombre_categoria: String)
 
 data class CategoriaResponse(
     val id_categoria: String,
+    // Grupo de presupuesto al que pertenece (Deudas, Gastos fijos, Gustos o
+    // Ahorro): decide en qué parte del presupuesto cuentan sus gastos.
+    val grupo_id: String?,
     val nombre_categoria: String,
     val es_activa_categoria: Boolean
 )
+
+data class CambiarGrupoCategoriaRequest(val grupo_id: String)
 
 data class CategoriaListaSalida(
     val categorias: List<CategoriaResponse>,
@@ -72,6 +77,15 @@ interface CategoriaApiService {
         @Header("Authorization") authorization: String,
         @Path("id_categoria") idCategoria: String,
         @Body request: RenombrarCategoriaRequest
+    ): CategoriaResponse
+
+    // Requiere sesión activa (Authorization: Bearer <token>). Mueve la
+    // categoría a otro grupo de presupuesto.
+    @PATCH("api/v1/categorias/{id_categoria}/grupo")
+    suspend fun cambiarGrupoCategoria(
+        @Header("Authorization") authorization: String,
+        @Path("id_categoria") idCategoria: String,
+        @Body request: CambiarGrupoCategoriaRequest
     ): CategoriaResponse
 
     // Requiere sesión activa (Authorization: Bearer <token>). Activa o

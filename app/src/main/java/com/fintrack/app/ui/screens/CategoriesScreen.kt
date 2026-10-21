@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
@@ -48,14 +49,17 @@ import com.fintrack.app.data.model.TransactionCategory
 import com.fintrack.app.data.model.TransactionSubcategory
 import com.fintrack.app.data.remote.CambiarEstadoCategoriaRequest
 import com.fintrack.app.data.remote.CambiarEstadoSubcategoriaRequest
+import com.fintrack.app.data.remote.CambiarGrupoCategoriaRequest
 import com.fintrack.app.data.remote.CategoriaResponse
 import com.fintrack.app.data.remote.CrearCategoriaRequest
 import com.fintrack.app.data.remote.CrearSubcategoriaRequest
+import com.fintrack.app.data.remote.GrupoResponse
 import com.fintrack.app.data.remote.RenombrarCategoriaRequest
 import com.fintrack.app.data.remote.RenombrarSubcategoriaRequest
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.SubcategoriaResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
+import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackDetailTopBar
 import com.fintrack.app.ui.components.SectionCard
 import com.fintrack.app.ui.theme.FinTrackNavy
@@ -67,7 +71,8 @@ import retrofit2.HttpException
 // Convierte lo que devuelve el backend al modelo que usa la UI.
 private fun CategoriaResponse.toTransactionCategory() = TransactionCategory(
     id = id_categoria,
-    name = nombre_categoria
+    name = nombre_categoria,
+    groupId = grupo_id
 )
 
 private fun SubcategoriaResponse.toTransactionSubcategory() = TransactionSubcategory(
@@ -112,6 +117,31 @@ fun CategoriesScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { loadCategories() }
+
+    // Grupos de presupuesto (Deudas, Gastos fijos, ...), para mostrar a cuál
+    // pertenece cada categoría y poder cambiarlo. Si no se pueden traer, la
+    // pantalla funciona igual, solo sin esa información.
+    var groups by remember { mutableStateOf<List<GrupoResponse>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        runAuthenticatedCall(context, onError = {}) { auth ->
+            RetrofitClient.presupuestoApi.obtenerGrupos(auth)
+        }?.let { response -> groups = response.grupos.filter { it.es_activo_grupo } }
+    }
+
+    // Categoría a la que se le está cambiando el grupo (diálogo abierto).
+    var categoryToChangeGroup by remember { mutableStateOf<TransactionCategory?>(null) }
+    categoryToChangeGroup?.let { category ->
+        ChangeCategoryGroupDialog(
+            category = category,
+            groups = groups,
+            onDismiss = { categoryToChangeGroup = null },
+            // Se ejecuta cuando el PATCH al backend tuvo éxito.
+            onChanged = { updated ->
+                categories = categories.map { if (it.id == updated.id) updated else it }
+                categoryToChangeGroup = null
+            }
+        )
+    }
 
     if (isAddingCategory) {
         AddCategoryDialog(
@@ -421,6 +451,8 @@ fun CategoriesScreen(onBack: () -> Unit) {
                             categories.forEachIndexed { index, category ->
                                 CategoryListRow(
                                     category = category,
+                                    groupName = groups.firstOrNull { it.id_grupo == category.groupId }?.nombre_grupo,
+                                    onGroupClick = if (groups.isNotEmpty()) ({ categoryToChangeGroup = category }) else null,
                                     isLoading = loadingCategoryId == category.id,
                                     isDeactivating = deactivatingCategoryId == category.id,
                                     isExpanded = expandedCategoryId == category.id,
@@ -463,10 +495,13 @@ fun CategoriesScreen(onBack: () -> Unit) {
 // Una fila de categoría real del usuario: ícono circular + nombre (tocarlo
 // expande/colapsa sus subcategorías, trayéndolas con GET la primera vez), y
 // los botones de editar (lápiz, trae el GET y abre el diálogo de renombrar)
-// y desactivar (bote de basura).
+// y desactivar (bote de basura). Debajo del nombre va su grupo de presupuesto,
+// que se puede tocar para cambiarlo.
 @Composable
 private fun CategoryListRow(
     category: TransactionCategory,
+    groupName: String?,
+    onGroupClick: (() -> Unit)?,
     isLoading: Boolean,
     isDeactivating: Boolean,
     isExpanded: Boolean,
@@ -496,14 +531,27 @@ private fun CategoryListRow(
             ) {
                 Icon(imageVector = Icons.Filled.Category, contentDescription = null, tint = FinTrackNavy)
             }
-            Text(
-                text = category.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+            Column(
                 modifier = Modifier
                     .padding(start = 12.dp)
                     .weight(1f)
-            )
+            ) {
+                Text(
+                    text = category.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (onGroupClick != null) {
+                    Text(
+                        text = "${groupName ?: "Sin grupo"} · Cambiar grupo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FinTrackNavy,
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .clickable { onGroupClick() }
+                    )
+                }
+            }
             Icon(
                 imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                 contentDescription = if (isExpanded) "Ocultar subcategorías" else "Ver subcategorías",
@@ -994,6 +1042,100 @@ private fun RenameCategoryDialog(
                     }
                 },
                 enabled = isValid && !isSaving,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
+            ) {
+                Text(text = if (isSaving) "Guardando..." else "Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text(text = "Cancelar")
+            }
+        }
+    )
+}
+
+// Popup para mover una categoría a otro grupo de presupuesto
+// (PATCH /api/v1/categorias/{id}/grupo). Los gastos de la categoría cuentan
+// en el presupuesto del grupo elegido.
+@Composable
+private fun ChangeCategoryGroupDialog(
+    category: TransactionCategory,
+    groups: List<GrupoResponse>,
+    onDismiss: () -> Unit,
+    onChanged: (TransactionCategory) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var selectedGroupId by remember { mutableStateOf(category.groupId) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text(text = "Grupo de \"${category.name}\"", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    text = "Los gastos de esta categoría cuentan en el presupuesto del grupo que elijas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                groups.forEach { group ->
+                    val isSelected = group.id_grupo == selectedGroupId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) FinTrackNavy.copy(alpha = 0.1f) else androidx.compose.ui.graphics.Color.Transparent)
+                            .clickable(enabled = !isSaving) { selectedGroupId = group.id_grupo; errorMessage = null }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = group.nombre_grupo,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isSelected) FinTrackNavy else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Seleccionado", tint = FinTrackNavy)
+                        }
+                    }
+                }
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage.orEmpty(),
+                        color = FinTrackRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val groupId = selectedGroupId ?: return@Button
+                    scope.launch {
+                        isSaving = true
+                        errorMessage = null
+                        val updated = runAuthenticatedCall(context, onError = { errorMessage = it }) { auth ->
+                            RetrofitClient.categoriaApi.cambiarGrupoCategoria(
+                                authorization = auth,
+                                idCategoria = category.id,
+                                request = CambiarGrupoCategoriaRequest(grupo_id = groupId)
+                            )
+                        }
+                        isSaving = false
+                        if (updated != null) onChanged(updated.toTransactionCategory())
+                    }
+                },
+                enabled = selectedGroupId != null && selectedGroupId != category.groupId && !isSaving,
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = FinTrackNavy)
             ) {
