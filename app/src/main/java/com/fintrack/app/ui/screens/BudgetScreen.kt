@@ -831,7 +831,9 @@ private fun GroupPercentagesEditor(
             OutlinedTextField(
                 value = percentageTexts[group.id].orEmpty(),
                 onValueChange = { percentageTexts[group.id] = it; onChange() },
-                label = { Text("%") },
+                // Como sufijo (no como label) para que el "%" quede en el mismo
+                // renglón que el número en lugar de flotar arriba del campo.
+                suffix = { Text("%") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.width(90.dp),
