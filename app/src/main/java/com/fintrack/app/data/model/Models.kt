@@ -68,7 +68,10 @@ data class AppTransaction(
     val categoryId: String?,
     val subcategoryId: String?,
     val amount: Double,
+    // Fecha de la operación (o la de registro si el backend no la manda).
     val date: String,
+    // Cuándo se capturó en la app.
+    val registeredAt: String,
     val comment: String?
 )
 

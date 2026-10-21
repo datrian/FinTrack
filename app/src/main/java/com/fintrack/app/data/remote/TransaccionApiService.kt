@@ -33,8 +33,13 @@ data class TransaccionResponse(
     // El backend serializa el monto como string (no number) para evitar
     // problemas de precisión con decimales.
     val monto_transaccion: String,
+    // Cuándo se capturó en la app (fecha y hora, ISO 8601).
     val fecha_registro_transaccion: String,
-    val comentario_transaccion: String?
+    val comentario_transaccion: String?,
+    // Cuándo ocurrió el movimiento ("yyyy-MM-dd"). Puede ser anterior al
+    // registro (un gasto de ayer capturado hoy); es la fecha que se muestra y
+    // la que decide a qué mes pertenece. Si no llega, se usa la de registro.
+    val fecha_operacion_transaccion: String? = null
 )
 
 data class TransaccionListaSalida(

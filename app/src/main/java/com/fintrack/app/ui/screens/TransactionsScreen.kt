@@ -92,7 +92,8 @@ private fun TransaccionResponse.toAppTransaction() = AppTransaction(
     categoryId = categoria_id,
     subcategoryId = subcategoria_id,
     amount = monto_transaccion.toDoubleOrNull() ?: 0.0,
-    date = fecha_registro_transaccion,
+    date = fecha_operacion_transaccion ?: fecha_registro_transaccion,
+    registeredAt = fecha_registro_transaccion,
     comment = comentario_transaccion
 )
 
@@ -541,6 +542,9 @@ private fun TransactionDetailDialog(
                         }
                         subcategoryName?.let { DetailRow("Subcategoría", it) }
                         DetailRow("Fecha", formatShortDate(current.date))
+                        // Solo si se capturó otro día (ej. un gasto de ayer registrado hoy).
+                        val registered = formatShortDate(current.registeredAt)
+                        if (registered != formatShortDate(current.date)) DetailRow("Registrada", registered)
                         current.comment?.takeIf { it.isNotBlank() }?.let { DetailRow("Comentario", it) }
                     }
                 }

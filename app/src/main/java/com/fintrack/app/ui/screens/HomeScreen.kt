@@ -71,6 +71,7 @@ import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
 import com.fintrack.app.ui.theme.ProgressTrack
 import java.io.IOException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.YearMonth
@@ -99,13 +100,16 @@ private suspend fun fetchAllTransactions(token: String): List<TransaccionRespons
     }
 }
 
-// Mes (en la zona horaria del teléfono) en que se registró una transacción.
-// El backend manda ISO 8601 con o sin zona; sin zona se toma tal cual.
+// Mes en que ocurrió una transacción: su fecha de operación ("yyyy-MM-dd").
+// Si no viene, se usa la de registro en la zona horaria del teléfono (el
+// backend la manda ISO 8601 con o sin zona; sin zona se toma tal cual).
 internal fun TransaccionResponse.yearMonth(): YearMonth? {
-    val date = runCatching {
-        OffsetDateTime.parse(fecha_registro_transaccion).atZoneSameInstant(ZoneId.systemDefault()).toLocalDate()
-    }.recoverCatching { LocalDateTime.parse(fecha_registro_transaccion).toLocalDate() }
-        .getOrNull() ?: return null
+    val date = fecha_operacion_transaccion?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        ?: runCatching {
+            OffsetDateTime.parse(fecha_registro_transaccion).atZoneSameInstant(ZoneId.systemDefault()).toLocalDate()
+        }.recoverCatching { LocalDateTime.parse(fecha_registro_transaccion).toLocalDate() }
+            .getOrNull()
+        ?: return null
     return YearMonth.from(date)
 }
 

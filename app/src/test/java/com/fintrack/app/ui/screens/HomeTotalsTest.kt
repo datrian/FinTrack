@@ -10,7 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HomeTotalsTest {
-    private fun tx(tipo: TipoTransaccion?, monto: String, fecha: String) = TransaccionResponse(
+    private fun tx(tipo: TipoTransaccion?, monto: String, fecha: String, fechaOperacion: String? = null) = TransaccionResponse(
         id_transaccion = "id",
         cuenta_id = "cuenta",
         tipo_transaccion = tipo,
@@ -19,7 +19,8 @@ class HomeTotalsTest {
         subcategoria_id = null,
         monto_transaccion = monto,
         fecha_registro_transaccion = fecha,
-        comentario_transaccion = null
+        comentario_transaccion = null,
+        fecha_operacion_transaccion = fechaOperacion
     )
 
     private val octubre = YearMonth.of(2026, 10)
@@ -74,5 +75,14 @@ class HomeTotalsTest {
         val lista = Gson().fromJson(json, TransaccionListaSalida::class.java).transacciones
         assertEquals(TipoTransaccion.PAGO_DEUDA, lista[0].tipo_transaccion)
         assertNull(lista[1].tipo_transaccion)
+    }
+
+    // Un gasto de agosto capturado en octubre pertenece a agosto: manda la
+    // fecha de operación, no la de registro.
+    @Test
+    fun `el mes sale de la fecha de operacion y no de la de registro`() {
+        val capturadoTarde = tx(TipoTransaccion.GASTO, "350.00", "2026-10-21T07:13:48Z", fechaOperacion = "2026-08-10")
+        assertEquals(YearMonth.of(2026, 8), capturadoTarde.yearMonth())
+        assertEquals(HomeTotals(monthIncome = 0.0, monthExpenses = 0.0), listOf(capturadoTarde).toHomeTotals(octubre))
     }
 }
