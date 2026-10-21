@@ -60,6 +60,7 @@ import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.SubcategoriaResponse
 import com.fintrack.app.data.remote.TransaccionResponse
 import com.fintrack.app.data.remote.parseApiErrorMessage
+import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.amountColor
 import com.fintrack.app.ui.components.formatCurrency
@@ -554,6 +555,13 @@ private fun AddTransactionDialog(
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    // Sugerencia de categoría a partir del comentario
+    // (GET /api/v1/analitica/sugerir-clasificacion). La subcategoría sugerida
+    // queda pendiente hasta que se carguen las subcategorías de la categoría.
+    var isSuggesting by remember { mutableStateOf(false) }
+    var suggestionMessage by remember { mutableStateOf<String?>(null) }
+    var pendingSuggestedSubcategoryId by remember { mutableStateOf<String?>(null) }
+
     // Al elegir una categoría se traen sus subcategorías (si ya había una
     // subcategoría elegida de otra categoría, se descarta).
     LaunchedEffect(selectedCategoryId) {
@@ -574,6 +582,42 @@ private fun AddTransactionDialog(
             subcategories = emptyList()
         } finally {
             isLoadingSubcategories = false
+        }
+        pendingSuggestedSubcategoryId?.let { suggested ->
+            if (subcategories.any { it.id == suggested }) selectedSubcategoryId = suggested
+            pendingSuggestedSubcategoryId = null
+        }
+    }
+
+    val suggestCategory: () -> Unit = {
+        val detalle = comentario.trim()
+        scope.launch {
+            isSuggesting = true
+            suggestionMessage = null
+            val suggestion = runAuthenticatedCall(context, onError = { suggestionMessage = it }) { auth ->
+                RetrofitClient.analiticaApi.sugerirClasificacion(auth, detalle)
+            }
+            val suggestedCategory = categories.firstOrNull { it.id == suggestion?.categoria_id }
+            when {
+                suggestion == null -> Unit
+                suggestion.sugerencia_encontrada == true && suggestedCategory != null -> {
+                    pendingSuggestedSubcategoryId = suggestion.subcategoria_id
+                    if (selectedCategoryId == suggestedCategory.id) {
+                        // La categoría ya estaba elegida: sus subcategorías ya
+                        // están cargadas, se aplica la sugerida directamente.
+                        if (subcategories.any { it.id == suggestion.subcategoria_id }) {
+                            selectedSubcategoryId = suggestion.subcategoria_id
+                        }
+                        pendingSuggestedSubcategoryId = null
+                    } else {
+                        selectedCategoryId = suggestedCategory.id
+                    }
+                    val name = listOfNotNull(suggestedCategory.name, suggestion.nombre_subcategoria).joinToString(" › ")
+                    suggestionMessage = "Sugerencia aplicada: $name. Puedes cambiarla si no es correcta."
+                }
+                else -> suggestionMessage = suggestion.explicacion_ux ?: "No hay una sugerencia para este gasto."
+            }
+            isSuggesting = false
         }
     }
 
@@ -745,7 +789,7 @@ private fun AddTransactionDialog(
 
                 OutlinedTextField(
                     value = comentario,
-                    onValueChange = { comentario = it },
+                    onValueChange = { comentario = it; suggestionMessage = null },
                     label = { Text("Comentario (opcional)") },
                     placeholder = { Text("Ej. Supermercado") },
                     singleLine = true,
@@ -754,6 +798,39 @@ private fun AddTransactionDialog(
                         .padding(top = 16.dp),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                // El backend pide una descripción de 3 a 500 caracteres.
+                if (isGasto && categories.isNotEmpty() && comentario.trim().length in 3..500) {
+                    Row(
+                        modifier = Modifier.padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Sugerir categoría con el comentario",
+                            color = FinTrackNavy,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.clickable(enabled = !isSuggesting) { suggestCategory() }
+                        )
+                        if (isSuggesting) {
+                            CircularProgressIndicator(
+                                color = FinTrackNavy,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                    }
+                }
+                suggestionMessage?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
                 if (errorMessage != null) {
                     Text(

@@ -101,6 +101,8 @@ data class PeriodoDetalleResponse(
 // "Nuevo presupuesto" con sus porcentajes sugeridos.
 data class GrupoResponse(
     val id_grupo: String,
+    // "G001".."G004"; Predicción lo usa para encontrar Gastos fijos y Gustos.
+    val codigo_grupo: String,
     val nombre_grupo: String,
     val porcentaje_sugerido_grupo: Int,
     val es_activo_grupo: Boolean

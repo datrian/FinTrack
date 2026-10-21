@@ -106,22 +106,6 @@ data class AppGoal(
     val isOverdue: Boolean
 )
 
-// Un punto del gráfico de proyección mensual (pantalla de Predicción).
-data class MonthProjection(
-    val label: String,
-    val amount: Double,
-    val displayValue: String,
-    val isProjected: Boolean, // true si es un mes futuro estimado, no real
-    val isSelected: Boolean = false
-)
-
-// Una predicción de gasto futuro con su nivel de confianza (ej. "Alta").
-data class FuturePrediction(
-    val month: String,
-    val amount: Double,
-    val confidence: String
-)
-
 // Una categoría real del usuario, traída de GET /api/v1/categorias. El backend
 // solo guarda nombre y estado (sin íconos ni colores); la UI le asigna un
 // ícono genérico.

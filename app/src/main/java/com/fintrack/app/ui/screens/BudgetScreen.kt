@@ -1,6 +1,5 @@
 package com.fintrack.app.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,7 +52,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.fintrack.app.data.local.SessionManager
 import com.fintrack.app.data.model.AccionCierrePresupuesto
 import com.fintrack.app.data.model.AppBudget
 import com.fintrack.app.data.model.EstadoPresupuesto
@@ -65,7 +63,7 @@ import com.fintrack.app.data.remote.PeriodoGrupoResponse
 import com.fintrack.app.data.remote.PeriodoResponse
 import com.fintrack.app.data.remote.RetrofitClient
 import com.fintrack.app.data.remote.TipoPeriodo
-import com.fintrack.app.data.remote.parseApiErrorMessage
+import com.fintrack.app.data.remote.runAuthenticatedCall
 import com.fintrack.app.ui.components.FinTrackTopBar
 import com.fintrack.app.ui.components.LabeledProgressBar
 import com.fintrack.app.ui.components.SectionCard
@@ -73,15 +71,12 @@ import com.fintrack.app.ui.components.formatCurrency
 import com.fintrack.app.ui.components.formatShortDate
 import com.fintrack.app.ui.theme.FinTrackNavy
 import com.fintrack.app.ui.theme.FinTrackRed
-import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import retrofit2.HttpException
 
 // Los 4 filtros disponibles sobre la lista de presupuestos. El backend
 // devuelve todos los estados juntos, así que el filtro se aplica en la app;
@@ -91,38 +86,6 @@ private enum class BudgetFilter(val label: String, val estado: EstadoPresupuesto
     FINALIZADOS("Finalizados", EstadoPresupuesto.FINALIZADO),
     CANCELADOS("Cancelados", EstadoPresupuesto.CANCELADO),
     TODOS("Todos", null)
-}
-
-private const val SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Vuelve a iniciar sesión."
-
-// Hace una llamada autenticada al backend y convierte los errores en un
-// mensaje para la UI (vía onError), devolviendo null si falló. Una respuesta
-// con un formato inesperado (RuntimeException de Gson) también se reporta
-// como error en vez de cerrar la app.
-private suspend fun <T> runBudgetCall(
-    context: Context,
-    onError: (String) -> Unit,
-    block: suspend (authorization: String) -> T
-): T? {
-    val token = SessionManager.getAccessToken(context)
-    if (token == null) {
-        onError(SESSION_EXPIRED_MESSAGE)
-        return null
-    }
-    return try {
-        block("Bearer $token")
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: HttpException) {
-        onError(if (e.code() == 401) SESSION_EXPIRED_MESSAGE else e.parseApiErrorMessage())
-        null
-    } catch (e: IOException) {
-        onError("No se pudo conectar con el servidor. Revisa tu conexión.")
-        null
-    } catch (e: RuntimeException) {
-        onError("El servidor respondió algo inesperado. Intenta de nuevo más tarde.")
-        null
-    }
 }
 
 // Los campos de la respuesta pueden faltar (ver PeriodoResponse): se usan
@@ -201,7 +164,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
         scope.launch {
             isLoadingBudgets = true
             budgetsError = null
-            runBudgetCall(context, onError = { budgetsError = it }) { auth ->
+            runAuthenticatedCall(context, onError = { budgetsError = it }) { auth ->
                 RetrofitClient.presupuestoApi.obtenerPresupuestos(auth)
             }?.let { response ->
                 allBudgets = response.presupuestos.orEmpty().map { it.toAppBudget() }
@@ -222,7 +185,7 @@ fun BudgetScreen(onOpenProfile: () -> Unit = {}) {
         scope.launch {
             isLoadingGroups = true
             groupsError = null
-            runBudgetCall(context, onError = { groupsError = it }) { auth ->
+            runAuthenticatedCall(context, onError = { groupsError = it }) { auth ->
                 RetrofitClient.presupuestoApi.obtenerGrupos(auth)
             }?.let { response ->
                 groups = response.grupos.filter { it.es_activo_grupo }
@@ -498,7 +461,7 @@ private fun BudgetDetailDialog(
         scope.launch {
             isLoading = budget == null
             loadError = null
-            runBudgetCall(context, onError = { loadError = it }) { auth ->
+            runAuthenticatedCall(context, onError = { loadError = it }) { auth ->
                 RetrofitClient.presupuestoApi.obtenerPresupuesto(auth, budgetId)
             }?.let { response ->
                 val periodo = response.periodo
@@ -571,7 +534,7 @@ private fun BudgetDetailDialog(
                         scope.launch {
                             isClosing = true
                             closeError = null
-                            val result = runBudgetCall(context, onError = { closeError = it }) { auth ->
+                            val result = runAuthenticatedCall(context, onError = { closeError = it }) { auth ->
                                 if (accionPendiente == AccionCierrePresupuesto.FINALIZAR) {
                                     RetrofitClient.presupuestoApi.finalizarPresupuesto(auth, budgetId)
                                 } else {
@@ -1035,7 +998,7 @@ private fun AddBudgetDialog(
                     scope.launch {
                         isSaving = true
                         errorMessage = null
-                        val created = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                        val created = runAuthenticatedCall(context, onError = { errorMessage = it }) { auth ->
                             RetrofitClient.presupuestoApi.crearPresupuesto(
                                 authorization = auth,
                                 request = CrearPresupuestoRequest(
@@ -1140,7 +1103,7 @@ private fun EditBudgetDialog(
                     scope.launch {
                         isSaving = true
                         errorMessage = null
-                        val saved = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                        val saved = runAuthenticatedCall(context, onError = { errorMessage = it }) { auth ->
                             RetrofitClient.presupuestoApi.actualizarPresupuesto(auth, budget.id, request)
                         }
                         saved?.close()
@@ -1222,7 +1185,7 @@ private fun EditDistributionDialog(
                     scope.launch {
                         isSaving = true
                         errorMessage = null
-                        val saved = runBudgetCall(context, onError = { errorMessage = it }) { auth ->
+                        val saved = runAuthenticatedCall(context, onError = { errorMessage = it }) { auth ->
                             RetrofitClient.presupuestoApi.actualizarDistribucion(auth, budgetId, grupos)
                         }
                         saved?.close()
